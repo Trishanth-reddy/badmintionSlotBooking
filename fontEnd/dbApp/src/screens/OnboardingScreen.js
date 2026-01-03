@@ -15,7 +15,7 @@ const pages = [
   {
     gradient: ['#6366f1', '#8b5cf6'],
     icon: '🏸',
-    title: 'Welcome to CourtBook',
+    title: 'Welcome to Georgies',
     subtitle: 'Book premium badminton courts\nanytime, anywhere',
     features: [
       '✓ Multiple court locations',

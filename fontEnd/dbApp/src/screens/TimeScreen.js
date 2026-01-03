@@ -21,7 +21,7 @@ import api from '../../api/axiosConfig';
 
 const { width } = Dimensions.get('window');
 const BULK_BOOKING_LIMIT = 7;
-const MAX_MEMBERSHIP_DAYS_DISPLAY = 14;
+const MAX_MEMBERSHIP_DAYS_DISPLAY = 30;
 const CALENDAR_MIN_HOUR = 6;
 const CALENDAR_MAX_HOUR = 21;
 

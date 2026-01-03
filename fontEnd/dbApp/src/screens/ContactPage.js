@@ -28,7 +28,7 @@ const contactInfo = [
     id: 2,
     icon: 'email',
     title: 'Email',
-    value: 'support@courtbook.com',
+    value: 'support@Georgies.com',
     color: '#ec4899',
     action: 'email',
   },

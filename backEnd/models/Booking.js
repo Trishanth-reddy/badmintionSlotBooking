@@ -8,12 +8,12 @@ const bookingSchema = new mongoose.Schema(
       required: true,
     },
     court: {
-      type: mongoose.Schema.Types.ObjectId, // ✅ CORRECT: This allows .populate()
+      type: mongoose.Schema.Types.ObjectId, // ✅ Allows .populate('court')
       ref: 'Court',
       required: true,
     },
     date: {
-      type: Date, // ✅ CORRECT: This allows date queries ($gte, $lt)
+      type: Date, // ✅ Allows date queries ($gte, $lt)
       required: true,
     },
     startTime: {
@@ -25,7 +25,7 @@ const bookingSchema = new mongoose.Schema(
       required: true,
     },
     user: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.ObjectId, // The user who created the booking
       ref: 'User',
       required: true,
     },
@@ -47,6 +47,24 @@ const bookingSchema = new mongoose.Schema(
         paidBy: String,
       },
     ],
+    joinRequests: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        status: {
+          type: String,
+          enum: ['Pending', 'Accepted', 'Declined'],
+          default: 'Pending',
+        },
+        requestedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     totalPlayers: {
       type: Number,
       default: 1,
@@ -64,19 +82,24 @@ const bookingSchema = new mongoose.Schema(
     qrCode: String,
     checkInTime: Date,
     confirmedAt: Date,
-    paidAt: Date, // Added this field
+    paidAt: Date,
     cancelledAt: Date,
     cancellationReason: String,
   },
-  { timestamps: true } // This automatically adds createdAt and updatedAt
+  { 
+    timestamps: true // Automatically adds createdAt and updatedAt
+  }
 );
 
-// Indexes for faster queries
+/**
+ * Indexes for optimized query performance
+ */
 bookingSchema.index({ user: 1, date: 1 });
 bookingSchema.index({ court: 1, date: 1 });
 bookingSchema.index({ date: 1, bookingStatus: 1 });
 bookingSchema.index({ bookingStatus: 1 });
 bookingSchema.index({ 'teamMembers.userId': 1 });
+bookingSchema.index({ 'joinRequests.user': 1 }); // Index for checking user's pending requests
 bookingSchema.index({ bookingId: 1 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

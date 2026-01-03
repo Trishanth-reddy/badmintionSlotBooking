@@ -15,7 +15,6 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
-  Modal,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -45,8 +44,8 @@ const formatSubDate = (dateString) => {
   });
 };
 
-// Memoized subscription card component
-const SubscriptionCard = React.memo(({ subscription, daysLeft, onCancel }) => (
+// Memoized subscription card component (Cancel Button REMOVED)
+const SubscriptionCard = React.memo(({ subscription, daysLeft }) => (
   <>
     <View style={styles.subscriptionCard}>
       <LinearGradient
@@ -97,15 +96,6 @@ const SubscriptionCard = React.memo(({ subscription, daysLeft, onCancel }) => (
         </View>
       </View>
     </View>
-
-    <TouchableOpacity
-      style={styles.cancelSubscriptionButton}
-      onPress={onCancel}
-      activeOpacity={0.7}
-    >
-      <MaterialIcons name="close" size={18} color="#dc2626" />
-      <Text style={styles.cancelSubscriptionText}>Cancel Subscription</Text>
-    </TouchableOpacity>
   </>
 ));
 
@@ -223,11 +213,9 @@ const ProfileScreen = ({ navigation }) => {
 
   const [loading, setLoading] = useState(true);
   const [profileImage, setProfileImage] = useState(null);
-  const [isUploading, setIsUploading] = useState(false); // <-- NEW STATE
+  const [isUploading, setIsUploading] = useState(false);
   const [subscription, setSubscription] = useState(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
-  const [cancelModalVisible, setCancelModalVisible] = useState(false);
-  const [cancelLoading, setCancelLoading] = useState(false);
 
   const [userData, setUserData] = useState({
     name: '',
@@ -314,63 +302,48 @@ const ProfileScreen = ({ navigation }) => {
     }, [authContext.userToken, loadUserProfile, loadSubscription, loadUserStats])
   );
 
-  // In ProfileScreen.js
+  const uploadImage = useCallback(async (localUri) => {
+    setIsUploading(true);
+    const formData = new FormData();
 
-// In ProfileScreen.js
+    const filename = localUri.split('/').pop();
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : `image/jpeg`;
 
-const uploadImage = useCallback(async (localUri) => {
-  setIsUploading(true);
-  const formData = new FormData();
-
-  const filename = localUri.split('/').pop();
-  const match = /\.(\w+)$/.exec(filename);
-  // Use a fallback for the type
-  const type = match ? `image/${match[1]}` : `image/jpeg`;
-
-  // --- FIX #2 (The Key) ---
-  // The key 'profilePicture' MUST match your backend's upload.single('profilePicture')
-  formData.append('profilePicture', {
-    uri: localUri,
-    name: filename,
-    type: type,
-  });
-
-  try {
-    // --- FIX #1 (The Method) ---
-    // Changed from api.put to api.post to match your routes/users.js
-    const response = await api.post('/users/profile-picture', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data', // This header is essential
-      },
+    formData.append('profilePicture', {
+      uri: localUri,
+      name: filename,
+      type: type,
     });
 
-    if (response.data.success) {
-      // Set the new Cloudinary URL from the server
-      setProfileImage(response.data.profilePicture);
-    } else {
-      Alert.alert('Upload Failed', response.data.message || 'Server error');
-    }
-  } catch (error) {
-    // This will now log more useful error details
-    if (error.response) {
-      // The request was made and the server responded with a non-2xx status
-      console.error('Error uploading image (response):', error.response.data);
-      Alert.alert('Upload Failed', error.response.data.message || 'Could not update profile picture.');
-    } else if (error.request) {
-      // The request was made but no response was received
-      console.error('Error uploading image (request):', error.request);
-      Alert.alert('Upload Failed', 'No response from server. Check your connection.');
-    } else {
-      // Something else happened
-      console.error('Error uploading image (general):', error.message);
-      Alert.alert('Upload Failed', error.message);
-    }
-  } finally {
-    setIsUploading(false);
-  }
-}, []); // 'api' and 'setProfileImage' should be stable, but you can add them if your linter complains
+    try {
+      const response = await api.post('/users/profile-picture', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
 
-  // --- UPDATED pickImage FUNCTION ---
+      if (response.data.success) {
+        setProfileImage(response.data.profilePicture);
+      } else {
+        Alert.alert('Upload Failed', response.data.message || 'Server error');
+      }
+    } catch (error) {
+      if (error.response) {
+        console.error('Error uploading image (response):', error.response.data);
+        Alert.alert('Upload Failed', error.response.data.message || 'Could not update profile picture.');
+      } else if (error.request) {
+        console.error('Error uploading image (request):', error.request);
+        Alert.alert('Upload Failed', 'No response from server. Check your connection.');
+      } else {
+        console.error('Error uploading image (general):', error.message);
+        Alert.alert('Upload Failed', error.message);
+      }
+    } finally {
+      setIsUploading(false);
+    }
+  }, []);
+
   const pickImage = useCallback(async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -387,12 +360,10 @@ const uploadImage = useCallback(async (localUri) => {
 
     if (!result.canceled) {
       const localUri = result.assets[0].uri;
-      // Show local preview immediately
       setProfileImage(localUri);
-      // Start the upload
       await uploadImage(localUri);
     }
-  }, [uploadImage]); // Add dependency
+  }, [uploadImage]);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
@@ -414,14 +385,6 @@ const uploadImage = useCallback(async (localUri) => {
     navigation.navigate('ChangePasswordMain');
   }, [navigation]);
 
-  const handleCancelSubscription = useCallback(() => {
-    setCancelModalVisible(true);
-  }, []);
-
-  const handleCloseCancelModal = useCallback(() => {
-    setCancelModalVisible(false);
-  }, []);
-
   const navigateToSubscriptionPlans = useCallback(() => {
     navigation.navigate('SubscriptionPlans');
   }, [navigation]);
@@ -437,28 +400,6 @@ const uploadImage = useCallback(async (localUri) => {
   const handlePrivacyPolicy = useCallback(() => {
     Alert.alert('Coming Soon', 'Privacy policy will be available soon.');
   }, []);
-
-  const confirmCancelSubscription = useCallback(async () => {
-    try {
-      setCancelLoading(true);
-      const response = await api.delete('/subscriptions/my-subscription/cancel', {
-        data: { reason: 'User cancelled from profile' },
-      });
-
-      if (response.data.success) {
-        setCancelModalVisible(false);
-        Alert.alert('Success', 'Subscription cancelled successfully');
-        loadSubscription();
-      }
-    } catch (error) {
-      Alert.alert(
-        'Error',
-        error.response?.data?.message || 'Failed to cancel subscription'
-      );
-    } finally {
-      setCancelLoading(false);
-    }
-  }, [loadSubscription]);
 
   const daysLeft = useMemo(
     () => (subscription ? getDaysLeft(subscription.expiryDate) : 0),
@@ -493,12 +434,11 @@ const uploadImage = useCallback(async (localUri) => {
         </LinearGradient>
 
         <View style={styles.profileSection}>
-          {/* --- UPDATED JSX FOR UPLOAD --- */}
           <TouchableOpacity
             style={styles.profileImageContainer}
             onPress={pickImage}
             activeOpacity={0.8}
-            disabled={isUploading} // Disable while uploading
+            disabled={isUploading}
           >
             {profileImage ? (
               <Image source={{ uri: profileImage }} style={styles.profileImage} />
@@ -508,7 +448,6 @@ const uploadImage = useCallback(async (localUri) => {
               </View>
             )}
 
-            {/* Show loading overlay or edit button */}
             {isUploading ? (
               <View style={styles.uploadingOverlay}>
                 <ActivityIndicator color="#fff" />
@@ -519,7 +458,6 @@ const uploadImage = useCallback(async (localUri) => {
               </View>
             )}
           </TouchableOpacity>
-          {/* --- END OF UPDATED JSX --- */}
 
           <Text style={styles.profileName}>{userData.name}</Text>
           <View style={styles.memberBadge}>
@@ -538,7 +476,6 @@ const uploadImage = useCallback(async (localUri) => {
           <SubscriptionCard
             subscription={subscription}
             daysLeft={daysLeft}
-            onCancel={handleCancelSubscription}
           />
         ) : (
           <NoSubscriptionCard onSubscribe={navigateToSubscriptionPlans} />
@@ -570,51 +507,6 @@ const uploadImage = useCallback(async (localUri) => {
           <Text style={styles.logoutButtonText}>Log Out</Text>
         </TouchableOpacity>
       </ScrollView>
-
-      <Modal visible={cancelModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <TouchableOpacity
-              onPress={handleCloseCancelModal}
-              style={styles.modalCloseButton}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="close" size={28} color="#1f2937" />
-            </TouchableOpacity>
-
-            <MaterialIcons name="warning" size={48} color="#dc2626" />
-
-            <Text style={styles.modalTitle}>Cancel Subscription?</Text>
-            <Text style={styles.modalSubtitle}>
-              You will lose access to premium features and booking hours.
-            </Text>
-
-            <View style={styles.modalButtonContainer}>
-              <TouchableOpacity
-                style={styles.modalKeepButton}
-                onPress={handleCloseCancelModal}
-                disabled={cancelLoading}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalKeepText}>Keep It</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={confirmCancelSubscription}
-                disabled={cancelLoading}
-                activeOpacity={0.7}
-              >
-                {cancelLoading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.modalCancelText}>Cancel Subscription</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -698,7 +590,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
   },
-  // --- NEW STYLE FOR UPLOADING ---
   uploadingOverlay: {
     position: 'absolute',
     top: 0,
@@ -873,22 +764,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#e5e7eb',
   },
-  cancelSubscriptionButton: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 20,
-    backgroundColor: '#fee2e2',
-    paddingVertical: 12,
-    borderRadius: 10,
-    marginBottom: 25,
-    gap: 8,
-  },
-  cancelSubscriptionText: {
-    color: '#dc2626',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
   statsContainer: {
     marginHorizontal: 20,
     marginBottom: 25,
@@ -994,74 +869,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: 'bold',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
-    width: width - 40,
-    alignItems: 'center',
-  },
-  modalCloseButton: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f3f4f6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#9ca3af',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  modalButtonContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  modalKeepButton: {
-    flex: 1,
-    backgroundColor: '#f3f4f6',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  modalKeepText: {
-    color: '#1f2937',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalCancelButton: {
-    flex: 1,
-    backgroundColor: '#dc2626',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  modalCancelText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
   },
 });
 

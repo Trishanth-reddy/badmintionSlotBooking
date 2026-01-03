@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Alert, ActivityIndicator, Image
 } from 'react-native';
@@ -43,47 +43,57 @@ const TeamSelectionScreen = ({ navigation, route }) => {
   const { selectedCourt } = route.params;
   const { user } = useContext(AuthContext);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
-  const [allUsers, setAllUsers] = useState([]); 
-  const [filteredUsers, setFilteredUsers] = useState([]);
+  
+  // Changed: 'users' holds the current list (whether filtered or all)
+  const [users, setUsers] = useState([]); 
   const [selectedTeam, setSelectedTeam] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // Ref to debounce search
+  const searchTimeout = useRef(null);
 
-  // 1. Load Data Once
+  // 1. Initial Load (Profile)
   useEffect(() => {
-    const init = async () => {
-      setLoading(true);
+    const fetchProfile = async () => {
       try {
-        const [profileRes, membersRes] = await Promise.all([
-          api.get('/users/profile'),
-          api.get('/users/available-members')
-        ]);
-        if (profileRes.data.success) setCurrentUserProfile(profileRes.data.data);
-        if (membersRes.data.success) {
-            setAllUsers(membersRes.data.data);
-            setFilteredUsers(membersRes.data.data);
-        }
-      } catch (error) { console.error(error); } 
-      finally { setLoading(false); }
+        const res = await api.get('/users/profile');
+        if (res.data.success) setCurrentUserProfile(res.data.data);
+      } catch (error) { console.error(error); }
     };
-    init();
+    fetchProfile();
+    // Load default users (empty search)
+    fetchUsers('');
   }, []);
 
-  // 2. Debounced Search Logic (Client Side for Speed)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-        if (!searchQuery.trim()) {
-            setFilteredUsers(allUsers);
-        } else {
-            const lower = searchQuery.toLowerCase();
-            const filtered = allUsers.filter(u => 
-                u.fullName.toLowerCase().includes(lower) || u.phone.includes(lower)
-            );
-            setFilteredUsers(filtered);
-        }
-    }, 300); // Wait 300ms after typing stops
-    return () => clearTimeout(timer);
-  }, [searchQuery, allUsers]);
+  // 2. Function to fetch users from Backend
+  const fetchUsers = async (query = '') => {
+    setLoading(true);
+    try {
+      // Sending search param to backend
+      const res = await api.get('/users/available-members', {
+        params: { search: query } 
+      });
+      if (res.data.success) {
+        setUsers(res.data.data);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 3. Handle Search Text Change (Debounced)
+  const handleSearch = (text) => {
+    setSearchQuery(text);
+    
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+
+    searchTimeout.current = setTimeout(() => {
+      fetchUsers(text); // Call API with new text
+    }, 500); // 500ms delay to wait for user to stop typing
+  };
 
   const toggleTeammate = useCallback((member) => {
     setSelectedTeam(prev => {
@@ -121,13 +131,13 @@ const TeamSelectionScreen = ({ navigation, route }) => {
           style={styles.searchInput}
           placeholder="Search Name or Number..."
           value={searchQuery}
-          onChangeText={setSearchQuery}
+          onChangeText={handleSearch} 
         />
       </View>
 
       {loading ? <ActivityIndicator size="large" color="#8b5cf6" style={{marginTop: 50}} /> : (
         <FlatList
-          data={filteredUsers}
+          data={users} // Directly use the fetched users
           keyExtractor={item => item._id}
           renderItem={({ item }) => (
             <UserCard 
@@ -138,8 +148,9 @@ const TeamSelectionScreen = ({ navigation, route }) => {
           )}
           contentContainerStyle={styles.listContent}
           initialNumToRender={8}
-          maxToRenderPerBatch={10}
-          windowSize={5}
+          ListEmptyComponent={
+            <Text style={{textAlign:'center', marginTop: 20, color:'#666'}}>No users found.</Text>
+          }
         />
       )}
 

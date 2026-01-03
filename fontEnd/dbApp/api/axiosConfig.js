@@ -1,17 +1,15 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert } from 'react-native';
 
-// AUTOMATIC Environment Switching
-// If running in development mode, use your Local IP. 
-// If built for production (APK/AAB), use the Render URL.
-const API_BASE_URL = 'https://badminton-slot-booking-app.onrender.com/api'; // YOUR PRODUCTION URL
+// Configuration
+// strictly use production URL
+const API_BASE_URL = 'https://badminton-slot-booking-app.onrender.com/api';
 
 console.log(`[Config] Connecting to: ${API_BASE_URL}`);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30 seconds is usually enough
+  timeout: 30000, 
 });
 
 // Request Interceptor
@@ -22,9 +20,9 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Only log requests in Development mode
+    // Log requests in Development
     if (__DEV__) {
-        console.log(`[Request] ${config.method.toUpperCase()} ${config.url}`);
+       console.log(`[Request] ${config.method.toUpperCase()} ${config.url}`);
     }
     return config;
   },
@@ -37,16 +35,14 @@ api.interceptors.response.use(
   async (error) => {
     const message = error.response?.data?.message || 'Something went wrong';
 
-    // Only log errors in Development mode
     if (__DEV__) {
-        console.error(`[API Error] ${error.config?.url}:`, message);
+       console.error(`[API Error] ${error.config?.url}:`, message);
     }
 
     // 401: Token Expired
     if (error.response?.status === 401) {
       await AsyncStorage.clear();
-      // You might want to trigger a navigation event to Login here
-      // Or let the React Context handle the 'null' token state change
+      // Optional: Navigate to login here if you have navigation reference
     }
 
     return Promise.reject(error);

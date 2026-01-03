@@ -10,6 +10,10 @@ const {
   getBookingById,
   cancelBooking,
   getBookingAvailability,
+  // Join Request Controllers
+  requestToJoin,
+  handleJoinRequest,
+  // Admin Controllers
   getAllBookings,
   getBookingsToday,
   markBookingPaid,
@@ -25,7 +29,7 @@ const bookingLimiter = rateLimit({
 });
 
 // ===============================================
-// --- USER ROUTES ---
+// --- USER ROUTES (Standard) ---
 // ===============================================
 
 router.post('/', protect, bookingLimiter, createBooking);
@@ -34,6 +38,22 @@ router.get('/upcoming', protect, getUpcomingBookings);
 router.get('/availability', protect, getBookingAvailability);
 router.get('/:id', protect, getBookingById);
 router.delete('/:id', protect, cancelBooking);
+
+// ===============================================
+// --- JOIN REQUEST ROUTES ---
+// ===============================================
+
+/**
+ * @route   POST /api/bookings/:id/join
+ * @desc    A guest requests to join a booking
+ */
+router.post('/:id/join', protect, requestToJoin);
+
+/**
+ * @route   PUT /api/bookings/:id/request/:requestId
+ * @desc    The Captain accepts or declines a specific join request
+ */
+router.put('/:id/request/:requestId', protect, handleJoinRequest);
 
 // ===============================================
 // --- ADMIN ROUTES ---

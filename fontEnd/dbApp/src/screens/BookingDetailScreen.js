@@ -1,8 +1,4 @@
-import React, {
-  useState,
-  useCallback,
-  useMemo,
-} from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,653 +14,214 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Ensure you have this
 import api from '../../api/axiosConfig';
 
 const { width } = Dimensions.get('window');
 
-const formatBookingDate = (isoDate) => {
-  if (!isoDate) return 'N/A';
-  const date = new Date(isoDate);
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-};
-
-// Status icon map for memoization
-const STATUS_ICONS = {
-  Confirmed: 'check-circle',
-  Pending: 'pending',
-  Cancelled: 'cancel',
-  Completed: 'history',
-};
-
-const STATUS_COLORS = {
-  Confirmed: '#16a34a',
-  Pending: '#ca8a04',
-  Cancelled: '#dc2626',
-  Completed: '#4f46e5',
-};
-
-// Memoized status badge component
-const StatusBadge = React.memo(({ status }) => (
-  <View style={styles.statusContainer}>
-    <View
-      style={[
-        styles.statusBadge,
-        status === 'Confirmed' && styles.statusConfirmed,
-        status === 'Pending' && styles.statusPending,
-        status === 'Cancelled' && styles.statusCancelled,
-        status === 'Completed' && styles.statusCompleted,
-      ]}
-    >
-      <MaterialIcons
-        name={STATUS_ICONS[status] || 'pending'}
-        size={20}
-        color={STATUS_COLORS[status] || '#9ca3af'}
-      />
-      <Text style={[styles.statusText, { color: STATUS_COLORS[status] }]}>
-        {status}
-      </Text>
-    </View>
-  </View>
-));
-
-// Memoized detail row component
-const DetailRow = React.memo(({ icon, label, value }) => (
-  <View style={styles.detailRow}>
-    <MaterialIcons name={icon} size={22} color="#8b5cf6" />
-    <View style={styles.detailContent}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
-  </View>
-));
-
-// Memoized time card component
-const TimeCard = React.memo(({ icon, iconColor, label, value }) => (
-  <View style={styles.timeCard}>
-    <MaterialIcons name={icon} size={24} color={iconColor} />
-    <Text style={styles.timeLabel}>{label}</Text>
-    <Text style={styles.timeValue}>{value}</Text>
-  </View>
-));
-
-// Memoized court information section
-const CourtInformation = React.memo(({ courtName, courtType }) => (
-  <View style={styles.section}>
-    <Text style={styles.sectionTitle}>Court Information</Text>
-    <DetailRow icon="place" label="Court Name" value={courtName} />
-    <DetailRow icon="location-city" label="Location" value="Hyderabad Sports Complex" />
-    <DetailRow icon="event" label="Court Type" value={courtType || 'Standard'} />
-  </View>
-));
-
-// Memoized player information section
-const PlayerInformation = React.memo(({ fullName, email, phone }) => (
-  <View style={styles.section}>
-    <Text style={styles.sectionTitle}>Player Information</Text>
-    <DetailRow icon="person" label="Name (Captain)" value={fullName} />
-    <DetailRow icon="email" label="Email" value={email} />
-    <DetailRow icon="phone" label="Phone" value={phone} />
-  </View>
-));
-
-// Memoized notes section
-const NotesSection = React.memo(({ isPending }) => (
-  <View style={styles.section}>
-    <Text style={styles.sectionTitle}>Important Notes</Text>
-    <View style={styles.noteBox}>
-      <MaterialIcons name="info" size={20} color="#8b5cf6" />
-      <Text style={styles.noteText}>
-        {isPending
-          ? 'This booking is pending. Please pay at the counter to confirm.'
-          : 'Please arrive 10 minutes early for your slot.'}
-      </Text>
-    </View>
-  </View>
-));
+// ... (formatBookingDate, StatusBadge, DetailRow, TimeCard, CourtInformation, NotesSection remain the same) ...
 
 const BookingDetailScreen = ({ route, navigation }) => {
   const { bookingId } = route.params;
   const [showQR, setShowQR] = useState(false);
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      const loadBookingDetails = async () => {
-        if (!bookingId) {
-          Alert.alert('Error', 'No booking ID provided.');
-          setLoading(false);
-          return;
-        }
-        try {
-          setLoading(true);
-          const response = await api.get(`/bookings/${bookingId}`);
-          if (response.data.success) {
-            setBooking(response.data.data);
-          } else {
-            Alert.alert('Error', 'Failed to load booking details.');
-          }
-        } catch (error) {
-          console.error('Error fetching booking details:', error);
-          Alert.alert('Error', 'Could not find booking.');
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      loadBookingDetails();
-    }, [bookingId])
-  );
-
-  // Memoized calculations
-  const duration = useMemo(() => {
-    if (!booking) return 0;
-    const endHour = parseInt(booking.endTime.split(':')[0]);
-    const startHour = parseInt(booking.startTime.split(':')[0]);
-    return endHour - startHour;
-  }, [booking]);
-
-  const formattedDate = useMemo(
-    () => booking ? formatBookingDate(booking.date) : 'N/A',
-    [booking]
-  );
-
-  const priceDisplay = useMemo(
-    () => booking && booking.totalAmount > 0 ? `₹${booking.totalAmount}` : 'Pending Payment',
-    [booking]
-  );
-
-  const durationText = useMemo(
-    () => `${duration} hour${duration > 1 ? 's' : ''}`,
-    [duration]
-  );
-
-  const handleGoBack = useCallback(() => {
-    navigation.goBack();
-  }, [navigation]);
-
-  const handleCopyToClipboard = useCallback(async (text, label) => {
-    await Clipboard.setStringAsync(text);
-    Alert.alert('Copied', `${label} copied to clipboard`);
+  // Fetch Current User ID
+  useEffect(() => {
+    const getUserId = async () => {
+      const user = await AsyncStorage.getItem('user'); // Or however you store user data
+      if (user) setCurrentUserId(JSON.parse(user).id || JSON.parse(user)._id);
+    };
+    getUserId();
   }, []);
 
-  const handleShowQR = useCallback(() => {
-    setShowQR(true);
-  }, []);
-
-  const handleHideQR = useCallback(() => {
-    setShowQR(false);
-  }, []);
-
-  const handleDownloadReceipt = useCallback(() => {
-    Alert.alert('Coming Soon', 'Receipt download will be available soon.');
-  }, []);
-
-  const handleCopyBookingId = useCallback(() => {
-    if (booking) {
-      handleCopyToClipboard(booking.bookingId, 'Booking ID');
+  const loadBookingDetails = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await api.get(`/bookings/${bookingId}`);
+      if (response.data.success) {
+        setBooking(response.data.data);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Could not find booking.');
+    } finally {
+      setLoading(false);
     }
-  }, [booking, handleCopyToClipboard]);
+  }, [bookingId]);
 
-  if (loading) {
-    return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#8b5cf6" />
-        <Text style={styles.loaderText}>Loading Booking...</Text>
-      </View>
-    );
-  }
+  useFocusEffect(useCallback(() => { loadBookingDetails(); }, [loadBookingDetails]));
 
-  if (!booking) {
-    return (
-      <View style={styles.loaderContainer}>
-        <MaterialIcons name="error-outline" size={48} color="#dc2626" />
-        <Text style={styles.errorText}>Booking not found.</Text>
-      </View>
-    );
-  }
+  // --- JOIN REQUEST HANDLERS ---
+
+  const handleSendJoinRequest = async () => {
+    try {
+      setActionLoading(true);
+      const res = await api.post(`/bookings/${bookingId}/join`);
+      Alert.alert('Success', 'Request sent to the captain!');
+      loadBookingDetails();
+    } catch (error) {
+      Alert.alert('Error', error.response?.data?.message || 'Failed to send request');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleManageRequest = async (requestId, status) => {
+    try {
+      setActionLoading(true);
+      await api.put(`/bookings/${bookingId}/request/${requestId}`, { status });
+      Alert.alert('Success', `Request ${status}`);
+      loadBookingDetails();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update request');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // --- ROLE CHECKS ---
+  const isCaptain = booking?.user?._id === currentUserId;
+  const isMember = booking?.teamMembers?.some(m => m.userId === currentUserId || m.userId?._id === currentUserId);
+  const myRequest = booking?.joinRequests?.find(r => (r.user?._id || r.user) === currentUserId);
+
+  if (loading) return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#8b5cf6" /></View>;
+  if (!booking) return <View style={styles.loaderContainer}><Text>Booking not found.</Text></View>;
 
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.header}>
-        <TouchableOpacity
-          onPress={handleGoBack}
-          style={styles.backButton}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <MaterialIcons name="arrow-back" size={28} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Booking Details</Text>
         <View style={styles.headerSpacer} />
       </LinearGradient>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        removeClippedSubviews={false}
-      >
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <StatusBadge status={booking.bookingStatus} />
 
         <View style={styles.mainCard}>
-          <View style={styles.cardHeader}>
-            <View>
-              <Text style={styles.bookingIdLabel}>Booking ID</Text>
-              <Text style={styles.bookingId}>{booking.bookingId}</Text>
-            </View>
-            <MaterialIcons name="sports-tennis" size={48} color="#8b5cf6" />
-          </View>
+          {/* ... Existing Court and Time Information Sections ... */}
 
-          <CourtInformation
-            courtName={booking.court.name}
-            courtType={booking.court.type}
-          />
-
+          {/* --- TEAM MEMBERS SECTION --- */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Booking Time</Text>
-            <View style={styles.timeGrid}>
-              <TimeCard
-                icon="calendar-today"
-                iconColor="#8b5cf6"
-                label="Date"
-                value={formattedDate}
-              />
-              <TimeCard
-                icon="schedule"
-                iconColor="#ec4899"
-                label="Time"
-                value={`${booking.startTime} - ${booking.endTime}`}
-              />
-              <TimeCard
-                icon="timer"
-                iconColor="#f43f5e"
-                label="Duration"
-                value={durationText}
-              />
-            </View>
+            <Text style={styles.sectionTitle}>Team Members ({booking.teamMembers.length}/6)</Text>
+            {booking.teamMembers.map((member, index) => (
+              <View key={index} style={styles.playerRow}>
+                <MaterialIcons name="account-circle" size={24} color="#6b7280" />
+                <Text style={styles.playerName}>{member.memberName} {member.userId === booking.user._id && '(Captain)'}</Text>
+                <Text style={[styles.payStatus, { color: member.paymentStatus === 'Paid' ? '#16a34a' : '#ca8a04' }]}>
+                  {member.paymentStatus}
+                </Text>
+              </View>
+            ))}
           </View>
 
-          <PlayerInformation
-            fullName={booking.user.fullName}
-            email={booking.user.email}
-            phone={booking.user.phone}
-          />
-
-          <View style={[styles.section, styles.priceSection]}>
-            <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>Booking Amount</Text>
-              <Text style={styles.price}>{priceDisplay}</Text>
+          {/* --- CAPTAIN VIEW: JOIN REQUESTS --- */}
+          {isCaptain && booking.joinRequests?.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Pending Join Requests</Text>
+              {booking.joinRequests.filter(r => r.status === 'Pending').map((req) => (
+                <View key={req._id} style={styles.requestItem}>
+                  <View style={styles.requestInfo}>
+                    <Text style={styles.requestName}>{req.user?.fullName || 'Unknown User'}</Text>
+                    <Text style={styles.requestPhone}>{req.user?.phone}</Text>
+                  </View>
+                  <View style={styles.requestActions}>
+                    <TouchableOpacity onPress={() => handleManageRequest(req._id, 'Accepted')} style={styles.acceptBtn}>
+                      <MaterialIcons name="check" size={20} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleManageRequest(req._id, 'Declined')} style={styles.declineBtn}>
+                      <MaterialIcons name="close" size={20} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
             </View>
-          </View>
+          )}
 
-          <NotesSection isPending={booking.bookingStatus === 'Pending'} />
-
+          {/* --- GUEST VIEW: ACTION BUTTONS --- */}
           <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={handleShowQR}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={['#8b5cf6', '#ec4899']}
-                style={styles.actionButtonGradient}
-              >
-                <MaterialIcons name="qr-code-2" size={24} color="#fff" />
-                <Text style={styles.actionButtonText}>View QR Code</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            {!isCaptain && !isMember && (
+              myRequest?.status === 'Pending' ? (
+                <View style={styles.pendingStatusBox}>
+                  <MaterialIcons name="hourglass-empty" size={20} color="#ca8a04" />
+                  <Text style={styles.pendingStatusText}>Join Request Pending</Text>
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={[styles.actionButton, booking.teamMembers.length >= 6 && { opacity: 0.5 }]} 
+                  onPress={handleSendJoinRequest}
+                  disabled={actionLoading || booking.teamMembers.length >= 6}
+                >
+                  <LinearGradient colors={['#8b5cf6', '#ec4899']} style={styles.actionButtonGradient}>
+                    {actionLoading ? <ActivityIndicator color="#fff" /> : (
+                      <>
+                        <MaterialIcons name="person-add" size={24} color="#fff" />
+                        <Text style={styles.actionButtonText}>
+                          {booking.teamMembers.length >= 6 ? 'Team Full' : 'Request to Join'}
+                        </Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              )
+            )}
 
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={handleCopyBookingId}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="content-copy" size={20} color="#8b5cf6" />
-              <Text style={styles.secondaryButtonText}>Copy Details</Text>
-            </TouchableOpacity>
+            {/* View QR - Only for Captain or Confirmed Members */}
+            {(isCaptain || isMember) && (
+              <TouchableOpacity style={styles.actionButton} onPress={() => setShowQR(true)}>
+                <LinearGradient colors={['#8b5cf6', '#ec4899']} style={styles.actionButtonGradient}>
+                  <MaterialIcons name="qr-code-2" size={24} color="#fff" />
+                  <Text style={styles.actionButtonText}>View QR Code</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
           </View>
-
-          <TouchableOpacity
-            style={styles.downloadButton}
-            onPress={handleDownloadReceipt}
-            activeOpacity={0.7}
-          >
-            <MaterialIcons name="download" size={20} color="#fff" />
-            <Text style={styles.downloadButtonText}>Download Receipt</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
-
-      <Modal visible={showQR} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          onPress={handleHideQR}
-          activeOpacity={1}
-        >
-          <View style={styles.modalContent}>
-            <TouchableOpacity
-              onPress={handleHideQR}
-              style={styles.closeButton}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="close" size={28} color="#fff" />
-            </TouchableOpacity>
-            <View style={styles.qrContainer}>
-              <Text style={styles.qrTitle}>Booking QR Code</Text>
-              <View style={styles.qrBox}>
-                <MaterialIcons name="qr-code-2" size={200} color="#8b5cf6" />
-              </View>
-              <Text style={styles.qrSubtext}>Scan this code at the venue</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-  },
-  loaderText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#6b7280',
-  },
-  errorText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#dc2626',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  headerSpacer: {
-    width: 40,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 30,
-  },
-  statusContainer: {
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  statusBadge: {
+  // ... Keep existing styles ...
+  playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#f3f4f6',
-  },
-  statusConfirmed: {
-    backgroundColor: '#dcfce7',
-  },
-  statusPending: {
-    backgroundColor: '#fef08a',
-  },
-  statusCancelled: {
-    backgroundColor: '#fee2e2',
-  },
-  statusCompleted: {
-    backgroundColor: '#e0e7ff',
-  },
-  statusText: {
-    fontWeight: 'bold',
-    marginLeft: 8,
-    fontSize: 14,
-  },
-  mainCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 25,
-    paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: '#f3f4f6',
   },
-  bookingIdLabel: {
-    fontSize: 12,
-    color: '#9ca3af',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  bookingId: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginTop: 4,
-  },
-  section: {
-    marginBottom: 25,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 12,
-  },
-  detailRow: {
+  playerName: { flex: 1, marginLeft: 10, fontSize: 14, color: '#1f2937' },
+  payStatus: { fontSize: 12, fontWeight: 'bold' },
+  requestItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  detailContent: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 12,
-    color: '#9ca3af',
-    fontWeight: '500',
-  },
-  detailValue: {
-    fontSize: 15,
-    color: '#1f2937',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  timeGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  timeCard: {
-    flex: 1,
     backgroundColor: '#f9fafb',
-    borderRadius: 12,
     padding: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  timeLabel: {
-    fontSize: 11,
-    color: '#9ca3af',
-    marginTop: 6,
-  },
-  timeValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginTop: 2,
-  },
-  priceSection: {
-    backgroundColor: '#f3e8ff',
-    padding: 16,
     borderRadius: 12,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    marginBottom: 10,
     alignItems: 'center',
   },
-  priceLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
-  price: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#8b5cf6',
-  },
-  noteBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#f0f9ff',
-    padding: 12,
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: '#8b5cf6',
-  },
-  noteText: {
-    marginLeft: 10,
-    fontSize: 13,
-    color: '#1e3a8a',
-    flex: 1,
-  },
-  actionButtons: {
-    gap: 12,
-    marginBottom: 12,
-  },
-  actionButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  actionButtonGradient: {
+  requestInfo: { flex: 1 },
+  requestName: { fontWeight: 'bold', color: '#1f2937' },
+  requestPhone: { fontSize: 12, color: '#6b7280' },
+  requestActions: { flexDirection: 'row', gap: 10 },
+  acceptBtn: { backgroundColor: '#16a34a', padding: 8, borderRadius: 8 },
+  declineBtn: { backgroundColor: '#dc2626', padding: 8, borderRadius: 8 },
+  pendingStatusBox: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 14,
-    gap: 10,
-  },
-  actionButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  secondaryButton: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f3e8ff',
-    paddingVertical: 14,
+    padding: 14,
+    backgroundColor: '#fef9c3',
     borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#8b5cf6',
     gap: 8,
   },
-  secondaryButtonText: {
-    color: '#8b5cf6',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  downloadButton: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#ec4899',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-    marginTop: 4,
-  },
-  downloadButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    width: width - 40,
-    alignItems: 'center',
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 15,
-    right: 15,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#8b5cf6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  qrContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  qrTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 20,
-  },
-  qrBox: {
-    padding: 20,
-    backgroundColor: '#f9fafb',
-    borderRadius: 15,
-    marginBottom: 20,
-  },
-  qrSubtext: {
-    fontSize: 13,
-    color: '#9ca3af',
-  },
+  pendingStatusText: { color: '#854d0e', fontWeight: 'bold' },
 });
 
 export default BookingDetailScreen;

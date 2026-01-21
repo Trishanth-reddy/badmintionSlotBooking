@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Configuration
 // strictly use production URL
-const API_BASE_URL = 'https://badminton-slot-booking-app.onrender.com/api';
+const API_BASE_URL = 'http://10.10.51.71:5000/api';
 
 console.log(`[Config] Connecting to: ${API_BASE_URL}`);
 

@@ -31,7 +31,7 @@ app.use(compression());
 // Rate Limiting (Limits each IP to 100 requests per 15 minutes)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, 
+  max: 1000, 
   message: 'Too many requests from this IP, please try again after 15 minutes',
   standardHeaders: true, 
   legacyHeaders: false,

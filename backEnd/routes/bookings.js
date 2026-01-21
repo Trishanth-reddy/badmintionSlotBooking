@@ -1,69 +1,38 @@
 const express = require('express');
 const router = express.Router();
-const rateLimit = require('express-rate-limit');
-const { protect, authorize } = require('../middleware/auth');
-
-const {
-  createBooking,
-  getMyBookings,
-  getUpcomingBookings,
-  getBookingById,
-  cancelBooking,
-  getBookingAvailability,
-  // Join Request Controllers
-  requestToJoin,
-  handleJoinRequest,
-  // Admin Controllers
-  getAllBookings,
-  getBookingsToday,
-  markBookingPaid,
-  markMemberPayment,
-  adminCancelBooking
+const { 
+    createBooking, 
+    getMySchedule, 
+    getBookingAvailability,
+    getOpenMatches, 
+    requestToJoin,
+    handleJoinRequest,
+    getUpcomingBookings,
+    cancelBooking,
+    getBookingById,
+    getMyBookings,
+    markBookingPaid,
+    getAllBookingsAdmin
 } = require('../controllers/bookingController');
+const { protect,authorize } = require('../middleware/auth');
 
-// --- Security: Limit Booking Creation ---
-const bookingLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20, // Max 20 booking attempts per hour
-  message: { message: 'Booking limit reached. Please wait.' }
-});
-
-// ===============================================
-// --- USER ROUTES (Standard) ---
-// ===============================================
-
-router.post('/', protect, bookingLimiter, createBooking);
-router.get('/my-bookings', protect, getMyBookings);
-router.get('/upcoming', protect, getUpcomingBookings);
+// --- 1. Static Routes (Must be first) ---
+router.get('/my-schedule', protect, getMySchedule); 
 router.get('/availability', protect, getBookingAvailability);
+router.get('/open-matches', protect, getOpenMatches);
+router.get('/upcoming', protect, getUpcomingBookings);
+router.get('/my-bookings', protect, getMyBookings);
+router.get('/admin/all', protect, authorize('admin'), getAllBookingsAdmin);
+
+// --- 2. Action Routes ---
+router.post('/', protect, createBooking);
+// --- 3. Dynamic Routes (Placed last to avoid CastErrors) ---
 router.get('/:id', protect, getBookingById);
-router.delete('/:id', protect, cancelBooking);
+router.put('/:id/cancel', protect, cancelBooking); // <--- Cancellation Logic
 
-// ===============================================
-// --- JOIN REQUEST ROUTES ---
-// ===============================================
-
-/**
- * @route   POST /api/bookings/:id/join
- * @desc    A guest requests to join a booking
- */
+// --- 4. Social & Admin ---
 router.post('/:id/join', protect, requestToJoin);
-
-/**
- * @route   PUT /api/bookings/:id/request/:requestId
- * @desc    The Captain accepts or declines a specific join request
- */
-router.put('/:id/request/:requestId', protect, handleJoinRequest);
-
-// ===============================================
-// --- ADMIN ROUTES ---
-// ===============================================
-const admin = authorize('admin');
-
-router.get('/admin/all', protect, admin, getAllBookings);
-router.get('/admin/today', protect, admin, getBookingsToday);
-router.put('/admin/:id/pay-all', protect, admin, markBookingPaid);
-router.put('/admin/:id/member/:userId/pay', protect, admin, markMemberPayment);
-router.delete('/admin/:id', protect, admin, adminCancelBooking);
+router.put('/:id/requests/:requestId', protect, handleJoinRequest);
+router.put('/:id/pay', protect, markBookingPaid);
 
 module.exports = router;

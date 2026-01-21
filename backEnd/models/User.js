@@ -8,19 +8,28 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Please provide a full name'],
       trim: true,
     },
-    email: {
-      type: String,
-      required: [true, 'Please provide an email'],
-      unique: true,
-      lowercase: true,
-      trim: true,
-      match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please provide a valid email'],
-    },
     phone: {
       type: String,
       required: [true, 'Please provide a phone number'],
       unique: true,
       trim: true,
+    },
+    email: {
+      type: String,
+      unique: true, 
+      sparse: true,    // Allows multiple users to have no email
+      lowercase: true,
+      trim: true,
+      // FIX: Use a custom validator instead of 'match'
+      validate: {
+        validator: function(v) {
+          // If email is null, undefined, or empty string, it's valid (optional)
+          if (!v || v.trim() === "") return true;
+          // Otherwise, check the regex
+          return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
+        },
+        message: 'Please enter a valid email address'
+      }
     },
     password: {
       type: String,
@@ -33,6 +42,8 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin'],
       default: 'user',
     },
+    otp: String,
+    otpExpiry: Date,
     isVerified: {
       type: Boolean,
       default: false,
@@ -42,8 +53,6 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
     bio: { type: String, default: '' },
-    
-    // Denormalized Membership Data (For Speed)
     membership: {
       status: { 
         type: String, 
@@ -54,26 +63,22 @@ const userSchema = new mongoose.Schema(
       expiryDate: { type: Date, default: null },
       expoPushToken: { type: String, default: null }, 
     },
-    
     lastLogin: Date,
   },
   { timestamps: true }
 );
 
-// Indexes for Auth speed
-userSchema.index({ email: 1 });
+// Indexes
 userSchema.index({ phone: 1 });
 
-// Hash password before saving
+// Password Hashing
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) {
-    next();
-  }
+  if (!this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
+  next();
 });
 
-// Method to compare passwords
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };

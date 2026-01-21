@@ -1,465 +1,211 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  FlatList,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  Dimensions,
-} from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Dimensions } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import api from '../../api/axiosConfig';
 
-// ========================================
-// CONSTANTS & HELPERS
-// ========================================
-
 const { width } = Dimensions.get('window');
-const BULK_BOOKING_LIMIT = 7;
-const MAX_MEMBERSHIP_DAYS_DISPLAY = 30;
-const CALENDAR_MIN_HOUR = 6;
-const CALENDAR_MAX_HOUR = 21;
-
-// Generate time slots once (expensive operation)
-const generateTimeSlots = () => {
-  const slots = [];
-  for (let i = CALENDAR_MIN_HOUR; i <= CALENDAR_MAX_HOUR; i++) {
-    const suffix = i >= 12 ? 'PM' : 'AM';
-    const displayHour = i % 12 === 0 ? 12 : i % 12;
-    slots.push(`${displayHour}:00 ${suffix}`);
-  }
-  return slots;
-};
-
-const ALL_TIME_SLOTS = generateTimeSlots();
-
-const getCalculatedEndTime = (startTime) => {
-  if (!startTime) return null;
-  const index = ALL_TIME_SLOTS.indexOf(startTime);
-  if (index === -1) return null;
-  if (index === ALL_TIME_SLOTS.length - 1) return '10:00 PM';
-  return ALL_TIME_SLOTS[index + 1];
-};
-
-// ========================================
-// MEMOIZED COMPONENTS
-// ========================================
-
-const TimeSlotItem = React.memo(
-  ({ item, isSelected, isBooked, onPress }) => (
-    <TouchableOpacity
-      style={[
-        styles.timeSlot,
-        isBooked && styles.timeSlotBooked,
-        isSelected && styles.timeSlotSelected,
-      ]}
-      onPress={() => onPress(item)}
-      disabled={isBooked}
-      activeOpacity={isBooked ? 1 : 0.7}
-    >
-      <Text
-        style={[
-          styles.timeSlotText,
-          isBooked && styles.timeSlotTextBooked,
-          isSelected && styles.timeSlotTextSelected,
-        ]}
-      >
-        {item}
-      </Text>
-      {isBooked && <MaterialIcons name="lock" size={14} color="#9ca3af" style={styles.lockIcon} />}
-    </TouchableOpacity>
-  ),
-  (prevProps, nextProps) =>
-    prevProps.item === nextProps.item &&
-    prevProps.isSelected === nextProps.isSelected &&
-    prevProps.isBooked === nextProps.isBooked
-);
-
-TimeSlotItem.displayName = 'TimeSlotItem';
-
-// ========================================
-// MAIN COMPONENT
-// ========================================
+const BULK_LIMIT = 7;
 
 const TimeScreen = ({ navigation, route }) => {
   const { selectedCourt, selectedTeam, minMembershipDays } = route.params;
 
-  // State
   const [selectedDates, setSelectedDates] = useState({});
   const [selectedStartTime, setSelectedStartTime] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [bookedSlots, setBookedSlots] = useState([]);
-  const [playableDays, setPlayableDays] = useState([]);
+  const [playableRange, setPlayableRange] = useState([]);
+  const [occupiedDates, setOccupiedDates] = useState([]); // Rule Enforcement
 
-  // Refs for performance
-  const fetchAbortControllerRef = useRef(null);
-
-  // Memoized values
-  const bookedSlotsSet = useMemo(() => new Set(bookedSlots), [bookedSlots]);
-
-  const datesCount = useMemo(() => Object.keys(selectedDates).length, [selectedDates]);
-
-  const markedDates = useMemo(() => {
-    const marks = {};
-    playableDays.forEach((d) => {
-      marks[d] = { marked: true, dotColor: '#8b5cf6' };
-    });
-    return { ...marks, ...selectedDates };
-  }, [playableDays, selectedDates]);
-
-  const selectedDatesArray = useMemo(() => Object.keys(selectedDates).sort(), [selectedDates]);
-
-  // Calculate playable days once
+  // --- 1. INITIALIZATION: Fetch User Schedule & Playable Range ---
   useEffect(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dates = [];
-    const limit = Math.min(minMembershipDays, MAX_MEMBERSHIP_DAYS_DISPLAY);
-
-    for (let i = 0; i < limit; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      dates.push(d.toISOString().split('T')[0]);
-    }
-    setPlayableDays(dates);
+    const init = async () => {
+      try {
+        const [schedule, range] = await Promise.all([
+          api.get('/bookings/my-schedule'),
+          getPlayableDates(minMembershipDays)
+        ]);
+        if (schedule.data.success) setOccupiedDates(schedule.data.data);
+        setPlayableRange(range);
+      } catch (e) {
+        Alert.alert("Error", "Could not load schedule.");
+      } finally { setIsInitializing(false); }
+    };
+    init();
   }, [minMembershipDays]);
 
-  // Handle day press
-  const handleDayPress = useCallback(
-    (day) => {
-      const dateStr = day.dateString;
-
-      if (!playableDays.includes(dateStr)) {
-        Alert.alert('Unavailable', "This date exceeds your team's membership limit.");
-        return;
-      }
-
-      setSelectedDates((prev) => {
-        const newState = { ...prev };
-        if (newState[dateStr]) {
-          delete newState[dateStr];
-        } else {
-          if (Object.keys(prev).length >= BULK_BOOKING_LIMIT) {
-            Alert.alert('Limit', `Max ${BULK_BOOKING_LIMIT} days bulk.`);
-            return prev;
-          }
-          newState[dateStr] = {
-            selected: true,
-            selectedColor: '#8b5cf6',
-            selectedTextColor: '#fff',
-          };
-        }
-        return newState;
-      });
-
-      setSelectedStartTime(null);
-    },
-    [playableDays]
-  );
-
-  // Fetch availability on selected dates change
-  useEffect(() => {
-    if (selectedDatesArray.length === 0) {
-      setBookedSlots([]);
-      return;
+  const getPlayableDates = (days) => {
+    const res = [];
+    const today = new Date();
+    for (let i = 0; i < Math.min(days, 30); i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      res.push(d.toISOString().split('T')[0]);
     }
+    return res;
+  };
 
-    const fetchAvailability = async () => {
-      setLoadingSlots(true);
+  // --- 2. BUSINESS LOGIC: Calculate End Time (1-hour slot) ---
+  const calculateEndTime = (startTime) => {
+    if (!startTime) return null;
+    const [time, modifier] = startTime.split(' ');
+    let [hours, minutes] = time.split(':');
+    hours = parseInt(hours, 10);
 
-      try {
-        // Cancel previous request if exists
-        if (fetchAbortControllerRef.current) {
-          fetchAbortControllerRef.current.abort();
-        }
+    // Simple 1-hour increment logic
+    let endHours = hours === 12 ? 1 : hours + 1;
+    let endModifier = modifier;
 
-        fetchAbortControllerRef.current = new AbortController();
+    // Handle AM/PM transition for 11:00 slots
+    if (hours === 11 && modifier === 'AM') endModifier = 'PM';
+    if (hours === 11 && modifier === 'PM') endModifier = 'AM';
 
-        const response = await api.get('/bookings/availability', {
-          params: {
-            courtId: selectedCourt._id,
-            dates: selectedDatesArray.join(','),
-          },
-          signal: fetchAbortControllerRef.current.signal,
-        });
+    return `${endHours}:${minutes} ${endModifier}`;
+  };
 
-        if (response.data.success) {
-          setBookedSlots(response.data.data || []);
-        }
-      } catch (error) {
-        if (error.name !== 'AbortError') {
-          console.error('Error fetching availability:', error);
-        }
-      } finally {
-        setLoadingSlots(false);
-      }
-    };
-
-    fetchAvailability();
-
-    return () => {
-      if (fetchAbortControllerRef.current) {
-        fetchAbortControllerRef.current.abort();
-      }
-    };
-  }, [selectedDatesArray, selectedCourt._id]);
-
-  // Handle time selection
-  const handleTimeSelection = useCallback(
-    (time) => {
-      if (bookedSlotsSet.has(time)) return;
-      setSelectedStartTime((prev) => (prev === time ? null : time));
-    },
-    [bookedSlotsSet]
-  );
-
-  // Handle continue to next screen
-  const handleContinue = useCallback(() => {
-    if (selectedDatesArray.length === 0) {
-      return Alert.alert('Select Date', 'Please select a date.');
-    }
-    if (!selectedStartTime) {
-      return Alert.alert('Select Time', 'Please select a time slot.');
-    }
-
-    const endTime = getCalculatedEndTime(selectedStartTime);
-    navigation.navigate('BookingConfirmation', {
-      selectedDates: selectedDatesArray,
-      selectedStartTime,
-      selectedEndTime: endTime,
-      court: selectedCourt,
-      selectedTeam,
+  // --- 3. MEMOIZED CALENDAR MARKING ---
+  const markedDates = useMemo(() => {
+    const marks = {};
+    playableRange.forEach(d => marks[d] = { marked: true, dotColor: '#c7d2fe' });
+    
+    // LOCK: Disable dates already in schedule
+    occupiedDates.forEach(d => {
+      marks[d] = { 
+        ...marks[d], 
+        disabled: true, 
+        disableTouchEvent: true, 
+        textColor: '#d1d5db' 
+      };
     });
-  }, [selectedDatesArray, selectedStartTime, navigation, selectedCourt, selectedTeam]);
 
-  // Handle back navigation
-  const handleGoBack = useCallback(() => {
-    navigation.goBack();
-  }, [navigation]);
+    return { ...marks, ...selectedDates };
+  }, [playableRange, occupiedDates, selectedDates]);
 
-  // Render time slot
-  const renderTimeSlot = useCallback(
-    ({ item }) => (
-      <TimeSlotItem
-        item={item}
-        isSelected={selectedStartTime === item}
-        isBooked={bookedSlotsSet.has(item)}
-        onPress={handleTimeSelection}
-      />
-    ),
-    [selectedStartTime, bookedSlotsSet, handleTimeSelection]
-  );
+  // --- 4. HANDLERS ---
+  const handleDayPress = useCallback((day) => {
+    const dStr = day.dateString;
+    if (occupiedDates.includes(dStr)) return; // Already locked
 
-  const timeSlotKeyExtractor = useCallback((item) => item, []);
+    setSelectedDates(prev => {
+      const next = { ...prev };
+      if (next[dStr]) {
+        delete next[dStr];
+      } else {
+        if (Object.keys(prev).length >= BULK_LIMIT) {
+          Alert.alert("Limit", `Maximum ${BULK_LIMIT} matches per booking.`);
+          return prev;
+        }
+        next[dStr] = { selected: true, selectedColor: '#8b5cf6', selectedTextColor: '#fff' };
+      }
+      return next;
+    });
+    setSelectedStartTime(null);
+  }, [occupiedDates]);
+
+  // Fetch intersection availability (Times free on ALL selected dates)
+  useEffect(() => {
+    const dates = Object.keys(selectedDates);
+    if (dates.length === 0) return setBookedSlots([]);
+    const fetchSlots = async () => {
+      setLoadingSlots(true);
+      try {
+        const res = await api.get('/bookings/availability', {
+          params: { courtId: selectedCourt._id, dates: dates.join(',') }
+        });
+        setBookedSlots(res.data.data || []);
+      } finally { setLoadingSlots(false); }
+    };
+    fetchSlots();
+  }, [selectedDates]);
+
+  if (isInitializing) return <View style={styles.center}><ActivityIndicator size="large" color="#8b5cf6" /></View>;
 
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.header}>
-        <TouchableOpacity onPress={handleGoBack} style={styles.backButton} activeOpacity={0.7}>
-          <MaterialIcons name="arrow-back" size={28} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Select Date & Time</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity onPress={() => navigation.goBack()}><MaterialIcons name="arrow-back" size={28} color="#fff" /></TouchableOpacity>
+        <Text style={styles.headerTitle}>Schedule Match</Text>
+        <View style={{ width: 28 }} />
       </LinearGradient>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-      >
-        <View style={styles.section}>
-          <Text style={styles.infoText}>Select multiple dates to bulk book.</Text>
-          <View style={styles.calendarContainer}>
-            <Calendar
-              onDayPress={handleDayPress}
-              minDate={playableDays[0]}
-              maxDate={playableDays[playableDays.length - 1]}
-              markedDates={markedDates}
-              theme={{
-                todayTextColor: '#8b5cf6',
-                arrowColor: '#8b5cf6',
-                selectedDayBackgroundColor: '#8b5cf6',
-              }}
-            />
-          </View>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.infoBox}>
+          <MaterialIcons name="info" size={16} color="#4338ca" />
+          <Text style={styles.infoText}>Rule: 1 Match per day. Greayed-out dates are already in your schedule.</Text>
         </View>
 
-        {datesCount > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Available Slots</Text>
-            {loadingSlots ? (
-              <ActivityIndicator size="large" color="#8b5cf6" style={{ marginTop: 20 }} />
-            ) : (
-              <FlatList
-                data={ALL_TIME_SLOTS}
-                keyExtractor={timeSlotKeyExtractor}
-                numColumns={3}
-                scrollEnabled={false}
-                renderItem={renderTimeSlot}
-                columnWrapperStyle={styles.timeGridRow}
-                removeClippedSubviews={true}
-                maxToRenderPerBatch={9}
-                windowSize={10}
-              />
-            )}
+        <Calendar
+          onDayPress={handleDayPress}
+          markedDates={markedDates}
+          minDate={playableRange[0]}
+          maxDate={playableRange[playableRange.length - 1]}
+          theme={{ todayTextColor: '#8b5cf6', selectedDayBackgroundColor: '#8b5cf6' }}
+        />
+
+        {Object.keys(selectedDates).length > 0 && (
+          <View style={styles.slotSection}>
+            <Text style={styles.slotTitle}>Free Slots (Intersection Availability)</Text>
+            <View style={styles.grid}>
+              {['6:00 AM', '7:00 AM', '8:00 AM', '9:00 AM', '4:00 PM', '5:00 PM', '6:00 PM'].map(time => {
+                const isBooked = new Set(bookedSlots).has(time);
+                return (
+                  <TouchableOpacity 
+                    key={time}
+                    disabled={isBooked}
+                    style={[styles.slot, isBooked && styles.slotBooked, selectedStartTime === time && styles.slotSelected]}
+                    onPress={() => setSelectedStartTime(time)}
+                  >
+                    <Text style={[styles.slotText, selectedStartTime === time && { color: '#fff' }]}>{time}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         )}
       </ScrollView>
 
       {selectedStartTime && (
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.continueButton}
-            onPress={handleContinue}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={['#8b5cf6', '#ec4899']}
-              style={styles.continueButtonGradient}
-            >
-              <Text style={styles.continueButtonText}>
-                Book {datesCount} Day(s) @ {selectedStartTime}
-              </Text>
-              <MaterialIcons name="arrow-forward" size={20} color="#fff" />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity 
+          style={styles.footer} 
+          onPress={() => {
+            const calculatedEndTime = calculateEndTime(selectedStartTime);
+            navigation.navigate('BookingConfirmation', {
+              selectedDates: Object.keys(selectedDates),
+              selectedStartTime,
+              selectedEndTime: calculatedEndTime, // Pass to fix validation
+              court: selectedCourt,
+              selectedTeam
+            });
+          }}
+        >
+          <Text style={styles.footerText}>
+            Proceed (₹{Object.keys(selectedDates).length * selectedCourt.pricePerHour})
+          </Text>
+        </TouchableOpacity>
       )}
     </View>
   );
 };
 
-// ========================================
-// STYLES
-// ========================================
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    paddingTop: 60,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scrollContent: {
-    paddingBottom: 120,
-  },
-  section: {
-    padding: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  infoText: {
-    color: '#666',
-    marginBottom: 10,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  calendarContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    overflow: 'hidden',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-  },
-  timeGridRow: {
-    gap: 10,
-    marginBottom: 10,
-  },
-  timeSlot: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    margin: 2,
-    minHeight: 70,
-  },
-  timeSlotSelected: {
-    backgroundColor: '#8b5cf6',
-    borderColor: '#8b5cf6',
-  },
-  timeSlotBooked: {
-    backgroundColor: '#f3f4f6',
-    opacity: 0.6,
-  },
-  timeSlotText: {
-    fontWeight: '600',
-    color: '#333',
-    fontSize: 13,
-  },
-  timeSlotTextSelected: {
-    color: '#fff',
-  },
-  timeSlotTextBooked: {
-    textDecorationLine: 'line-through',
-    color: '#999',
-  },
-  lockIcon: {
-    marginTop: 4,
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  continueButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  continueButtonGradient: {
-    padding: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-  },
-  continueButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, paddingTop: 60 },
+  headerTitle: { fontSize: 18, color: '#fff', fontWeight: 'bold' },
+  content: { padding: 20 },
+  infoBox: { flexDirection: 'row', backgroundColor: '#eef2ff', padding: 12, borderRadius: 10, marginBottom: 15, alignItems: 'center', gap: 8 },
+  infoText: { color: '#4338ca', fontSize: 11, fontWeight: '700', flex: 1 },
+  slotSection: { marginTop: 20 },
+  slotTitle: { fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 10 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  slot: { width: (width - 60) / 3, padding: 15, backgroundColor: '#fff', borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ddd' },
+  slotSelected: { backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' },
+  slotBooked: { backgroundColor: '#f3f4f6', opacity: 0.5 },
+  slotText: { fontSize: 11, fontWeight: 'bold' },
+  footer: { backgroundColor: '#8b5cf6', padding: 20, alignItems: 'center' },
+  footerText: { color: '#fff', fontWeight: 'bold', fontSize: 16 }
 });
 
 export default TimeScreen;

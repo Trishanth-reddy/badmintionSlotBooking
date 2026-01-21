@@ -1,301 +1,300 @@
 const mongoose = require('mongoose');
 const asyncHandler = require('express-async-handler');
-
-// Models
 const Booking = require('../models/Booking');
-const User = require('../models/User');
-const Subscription = require('../models/Subscription');
 const Court = require('../models/Court');
+const User = require('../models/User');
+const { 
+  notifyCaptainJoinRequest, 
+  notifyPlayerRequestAccepted, 
+  notifyBookingApproved,
+  notifyAdminNewBooking 
+} = require('../services/notificationService');
 
-// Services
-const { notifyAdminNewBooking, notifyUserBookingStatus } = require('../services/notificationService');
-
-// --- Helpers ---
-const generateBookingId = () =>
-  `BK-${Date.now()}${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-
-const isValidObjectId = (id) =>
-  mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id);
+// --- Helper: Quota Check (Enforces 1 Match per Day) ---
+const isUserPlayingThatDay = async (userId, date, session = null) => {
+    const bDate = new Date(date);
+    bDate.setHours(0, 0, 0, 0);
+    const query = Booking.findOne({
+        date: bDate,
+        bookingStatus: { $in: ['Pending', 'Confirmed'] },
+        $or: [{ user: userId }, { 'teamMembers.userId': userId }]
+    });
+    return session ? query.session(session) : query;
+};
 
 // ===============================================
 // --- CORE BOOKING LOGIC ---
 // ===============================================
 
-/**
- * @desc    Create Bulk/Single Booking (Atomic Transaction)
- * @route   POST /api/bookings
- * @access  Private
- */
 exports.createBooking = asyncHandler(async (req, res) => {
-  const { courtId, dates, startTime, endTime, teamMemberIds = [] } = req.body;
-  const captainUserId = req.user.id;
+  const { courtId, dates, startTime, endTime, teamMemberIds = [], isPublic = false } = req.body;
+  const captainId = req.user.id;
 
-  if (!courtId || !dates?.length || !startTime || !endTime)
-    return res.status(400).json({ message: 'Court, Dates, and Time are required' });
+  // 1. DEDUPLICATE: Ensure we aren't checking the same person twice
+  const allParticipantIds = [...new Set([captainId, ...teamMemberIds])];
 
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const court = await Court.findById(courtId).session(session);
-    if (!court) throw new Error('Court not found');
-
-    const validMemberIds = teamMemberIds.filter(isValidObjectId);
-    const allPlayerIds = [captainUserId, ...validMemberIds];
-    
-    if (allPlayerIds.length < 1 || allPlayerIds.length > 6)
-      throw new Error('Team must be between 1 and 6 players');
-
-    const activeSubs = await Subscription.find({
-      user: { $in: allPlayerIds },
-      status: 'Active',
-    }).session(session);
-
-    if (!activeSubs.some(sub => String(sub.user) === String(captainUserId)))
-      throw new Error('Captain must have an active membership');
-
-    const teamInfos = await User.find({ _id: { $in: allPlayerIds } })
-      .select('fullName phone')
-      .session(session);
-
-    const teamArr = allPlayerIds.map((id) => {
-      const member = teamInfos.find((m) => String(m._id) === String(id));
-      return {
-        userId: id,
-        memberName: member?.fullName ?? 'Unknown',
-        memberPhone: member?.phone ?? '',
-        paymentStatus: 'Pending',
-      };
-    });
-
-    const bookingsToCreate = [];
     for (const dateStr of dates) {
-      const bookingDate = new Date(dateStr);
-      bookingDate.setHours(0, 0, 0, 0);
+      const bDate = new Date(dateStr);
+      bDate.setHours(0, 0, 0, 0);
 
-      const searchDateStart = new Date(dateStr);
-      searchDateStart.setHours(0, 0, 0, 0);
-      const searchDateEnd = new Date(dateStr);
-      searchDateEnd.setHours(23, 59, 59, 999);
-
-      const slot = await Booking.findOne({
-        court: courtId,
-        date: { $gte: searchDateStart, $lte: searchDateEnd },
-        startTime: { $lt: endTime },
-        endTime: { $gt: startTime },
+      // 2. INDIVIDUAL VERIFICATION: Check EVERY player for conflicts on this specific day
+      // This query searches for ANY booking where ANY of our participants are already listed
+      const conflict = await Booking.findOne({
+        date: bDate,
         bookingStatus: { $in: ['Pending', 'Confirmed'] },
-      }).session(session);
+        $or: [
+          { user: { $in: allParticipantIds } }, // Checked as Captain
+          { 'teamMembers.userId': { $in: allParticipantIds } } // Checked as Team Member
+        ]
+      }).populate('user', 'fullName').session(session);
 
-      if (slot) throw new Error(`${dateStr}: Slot ${startTime}-${endTime} is already booked.`);
+      if (conflict) {
+        // Find which specific user caused the conflict to provide a clear error
+        throw new Error(
+          `Bulk Booking Failed: One or more players are already booked for a match on ${bDate.toLocaleDateString()}.`
+        );
+      }
 
-      const daily = await Booking.findOne({
-        date: { $gte: searchDateStart, $lte: searchDateEnd },
-        'teamMembers.userId': { $in: allPlayerIds },
-        bookingStatus: { $in: ['Pending', 'Confirmed'] },
-      }).session(session);
-
-      if (daily) throw new Error(`${dateStr}: A team member already has a booking on this day.`);
-
-      bookingsToCreate.push({
-        bookingId: generateBookingId(),
+      // 3. COURT AVAILABILITY: Ensure court isn't taken for this specific slot
+      const courtBusy = await Booking.findOne({
         court: courtId,
-        date: bookingDate,
+        date: bDate,
         startTime,
-        endTime,
-        user: captainUserId,
-        teamMembers: teamArr,
-        totalPlayers: allPlayerIds.length,
-        bookingStatus: 'Pending',
-        totalAmount: 0,
-      });
+        bookingStatus: { $in: ['Pending', 'Confirmed'] }
+      }).session(session);
+
+      if (courtBusy) {
+        throw new Error(`Court is already taken for ${startTime} on ${bDate.toLocaleDateString()}`);
+      }
     }
 
-    const createdBookings = await Booking.insertMany(bookingsToCreate, { session });
+    // 4. BATCH EXECUTION: Create all bookings if all checks passed
+    const bookingsToCreate = dates.map(d => ({
+      bookingId: `BK-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      court: courtId,
+      date: new Date(d),
+      startTime,
+      endTime,
+      user: captainId,
+      isPublic,
+      teamMembers: allParticipantIds.map(id => ({ userId: id, paymentStatus: 'Pending' })),
+      totalPlayers: allParticipantIds.length,
+      bookingStatus: 'Pending'
+    }));
+
+    await Booking.insertMany(bookingsToCreate, { session });
+    
     await session.commitTransaction();
-    session.endSession();
+    res.status(201).json({ success: true, message: "Bulk booking confirmed successfully!" });
 
-    if (createdBookings.length) {
-      notifyAdminNewBooking(createdBookings[0]);
-      notifyUserBookingStatus(createdBookings[0], 'Pending');
-    }
-
-    res.status(201).json({ success: true, count: createdBookings.length, data: createdBookings });
   } catch (error) {
+    // If ANY check fails for ANY day, nothing is saved to the DB
     await session.abortTransaction();
-    session.endSession();
     res.status(400).json({ success: false, message: error.message });
+  } finally {
+    session.endSession();
   }
 });
 
 // ===============================================
-// --- JOIN REQUEST LOGIC ---
+// --- JOIN REQUESTS & MATCHMAKING ---
 // ===============================================
 
-/**
- * @desc    Request to join an existing booking
- * @route   POST /api/bookings/:id/join
- */
 exports.requestToJoin = asyncHandler(async (req, res) => {
-  const booking = await Booking.findById(req.params.id);
-  const userId = req.user.id;
+    const userId = req.user.id;
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
 
-  if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    // --- NEW: DYNAMIC MEMBERSHIP CHECK ---
+    const user = await User.findById(userId);
+    const now = new Date();
+    const expiryDate = user.membership?.expiryDate ? new Date(user.membership.expiryDate) : null;
 
-  if (booking.user.toString() === userId) {
-    return res.status(400).json({ message: 'You are the captain of this booking' });
-  }
+    if (!expiryDate || expiryDate < now) {
+        return res.status(403).json({ 
+            success: false, 
+            message: "Membership Required: Your membership has expired or is inactive." 
+        });
+    }
+    // -------------------------------------
 
-  const isAlreadyMember = booking.teamMembers.some(m => m.userId.toString() === userId);
-  if (isAlreadyMember) {
-    return res.status(400).json({ message: 'You are already a member of this team' });
-  }
-
-  if (booking.teamMembers.length >= 6) {
-    return res.status(400).json({ message: 'This booking is already full' });
-  }
-
-  const existingRequest = booking.joinRequests.find(r => r.user.toString() === userId);
-  if (existingRequest && existingRequest.status !== 'Declined') {
-    return res.status(400).json({ message: 'You already have a active request' });
-  }
-
-  if (existingRequest && existingRequest.status === 'Declined') {
-    existingRequest.status = 'Pending';
-    existingRequest.requestedAt = new Date();
-  } else {
-    booking.joinRequests.push({ user: userId, status: 'Pending' });
-  }
-
-  await booking.save();
-  res.status(200).json({ success: true, message: 'Join request sent' });
-});
-
-/**
- * @desc    Accept or Decline a join request (Captain only)
- * @route   PUT /api/bookings/:id/request/:requestId
- */
-exports.handleJoinRequest = asyncHandler(async (req, res) => {
-  const { status } = req.body; // 'Accepted' or 'Declined'
-  const booking = await Booking.findById(req.params.id);
-
-  if (!booking) return res.status(404).json({ message: 'Booking not found' });
-
-  if (booking.user.toString() !== req.user.id) {
-    return res.status(403).json({ message: 'Only the captain can manage requests' });
-  }
-
-  const request = booking.joinRequests.id(req.params.requestId);
-  if (!request) return res.status(404).json({ message: 'Request not found' });
-
-  if (status === 'Accepted') {
-    if (booking.teamMembers.length >= 6) {
-      return res.status(400).json({ message: 'Team is full.' });
+    if (await isUserPlayingThatDay(userId, booking.date)) {
+        return res.status(400).json({ message: "You already have a match scheduled for this day." });
     }
 
-    const joiningUser = await User.findById(request.user).select('fullName phone');
-    
-    booking.teamMembers.push({
-      userId: joiningUser._id,
-      memberName: joiningUser.fullName,
-      memberPhone: joiningUser.phone,
-      paymentStatus: 'Pending'
-    });
-    
-    booking.totalPlayers = booking.teamMembers.length;
-    request.status = 'Accepted';
-  } else {
-    request.status = 'Declined';
-  }
+    if (booking.joinRequests.some(r => r.user.toString() === userId)) {
+        return res.status(400).json({ message: 'Request already sent.' });
+    }
 
-  await booking.save();
-  res.status(200).json({ success: true, message: `Request ${status}`, data: booking });
+    booking.joinRequests.push({ user: userId, status: 'Pending' });
+    await booking.save();
+
+    // Notify Captain
+    const court = await Court.findById(booking.court);
+    await notifyCaptainJoinRequest(booking.user, req.user.fullName, court.name, booking._id);
+
+    res.status(200).json({ success: true, message: 'Join request sent!' });
+});
+
+exports.handleJoinRequest = asyncHandler(async (req, res) => {
+    const { status } = req.body;
+    const booking = await Booking.findById(req.params.id);
+    if (booking.user.toString() !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
+
+    const request = booking.joinRequests.id(req.params.requestId);
+    if (!request) return res.status(404).json({ message: 'Request not found' });
+
+    if (status === 'Accepted') {
+        if (booking.teamMembers.length >= 6) return res.status(400).json({ message: 'Court is full.' });
+        
+        if (await isUserPlayingThatDay(request.user, booking.date)) {
+            request.status = 'Declined';
+            await booking.save();
+            return res.status(400).json({ message: 'This player joined another match today.' });
+        }
+
+        booking.teamMembers.push({ userId: request.user });
+        booking.totalPlayers = booking.teamMembers.length;
+
+        // Notify Player
+        const court = await Court.findById(booking.court);
+        await notifyPlayerRequestAccepted(request.user, court.name);
+    }
+
+    request.status = status;
+    await booking.save();
+    res.status(200).json({ success: true, data: booking });
 });
 
 // ===============================================
-// --- READ & AVAILABILITY ---
+// --- ADMIN FUNCTIONS ---
 // ===============================================
+
+exports.markBookingPaid = asyncHandler(async (req, res) => {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    booking.bookingStatus = 'Confirmed';
+    await booking.save();
+
+    // Notify all parties
+    await notifyBookingApproved(booking);
+
+    res.status(200).json({ success: true, message: 'Booking confirmed and parties notified.' });
+});
+
+// ===============================================
+// --- UTILITY GETTERS ---
+// ===============================================
+
+exports.getMySchedule = asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const bookings = await Booking.find({
+        $or: [{ user: userId }, { 'teamMembers.userId': userId }],
+        bookingStatus: { $ne: 'Cancelled' }
+    }).select('date');
+    const occupiedDates = [...new Set(bookings.map(b => b.date.toISOString().split('T')[0]))];
+    res.status(200).json({ success: true, data: occupiedDates });
+});
 
 exports.getBookingAvailability = asyncHandler(async (req, res) => {
-  const { courtId, dates } = req.query;
-  if (!courtId || !dates) return res.status(400).json({ message: 'Required fields missing' });
-
-  const dateArray = dates.split(',');
-  const startDates = dateArray.map(d => new Date(d).setHours(0,0,0,0));
-  
-  const minDate = new Date(Math.min(...startDates));
-  const maxDate = new Date(Math.max(...startDates));
-  maxDate.setHours(23, 59, 59, 999);
-
-  const bookings = await Booking.find({
-    court: courtId,
-    date: { $gte: minDate, $lte: maxDate },
-    bookingStatus: { $in: ['Pending', 'Confirmed'] },
-  }).select('date startTime endTime');
-
-  const bookedSlotsSet = new Set();
-  bookings.forEach((b) => {
-    bookedSlotsSet.add(`${b.date.toISOString().split('T')[0]}_${b.startTime}`);
-  });
-
-  res.status(200).json({ success: true, data: Array.from(bookedSlotsSet) });
+    const { courtId, dates } = req.query;
+    if (!dates) return res.status(400).json({ message: "Dates required" });
+    const dateArray = dates.split(',').map(d => new Date(d));
+    const bookings = await Booking.find({
+        court: courtId,
+        date: { $in: dateArray },
+        bookingStatus: { $in: ['Pending', 'Confirmed'] }
+    }).select('startTime');
+    const bookedSlots = [...new Set(bookings.map(b => b.startTime))];
+    res.status(200).json({ success: true, data: bookedSlots });
 });
 
 exports.getMyBookings = asyncHandler(async (req, res) => {
-  const bookings = await Booking.find({ user: req.user.id })
-    .populate('court', 'name')
-    .sort({ date: -1 })
-    .lean();
-  res.status(200).json({ success: true, data: bookings });
+    const data = await Booking.find({ 
+        $or: [{ user: req.user.id }, { 'teamMembers.userId': req.user.id }] 
+    }).populate('court', 'name').sort({ date: -1 });
+    res.status(200).json({ success: true, data });
+});
+
+exports.getUpcomingBookings = asyncHandler(async (req, res) => {
+    const data = await Booking.find({
+        date: { $gte: new Date().setHours(0,0,0,0) },
+        $or: [{ user: req.user.id }, { 'teamMembers.userId': req.user.id }]
+    }).populate('court', 'name');
+    res.status(200).json({ success: true, data });
 });
 
 exports.getBookingById = asyncHandler(async (req, res) => {
-  const booking = await Booking.findById(req.params.id)
-    .populate('court', 'name pricePerHour')
-    .populate('user', 'fullName email phone')
-    .populate('joinRequests.user', 'fullName phone');
-  if (!booking) return res.status(404).json({ message: 'Not found' });
-  res.status(200).json({ success: true, data: booking });
+    const booking = await Booking.findById(req.params.id)
+        .populate('court user') // Populates court and captain info
+        .populate('teamMembers.userId', 'fullName profilePicture') // Add this to see player names
+        .populate('joinRequests.user', 'fullName phone'); // Populates pending requests
+
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    res.status(200).json({ success: true, data: booking });
 });
 
-// ===============================================
-// --- ADMIN & STATUS MANAGEMENT ---
-// ===============================================
+exports.getOpenMatches = asyncHandler(async (req, res) => {
+    const data = await Booking.find({ isPublic: true, bookingStatus: 'Pending' })
+        .populate('court', 'name').populate('user', 'fullName');
+    res.status(200).json({ success: true, data });
+});
 
+/**
+ * @desc    Cancel a booking (Captain OR Admin Override)
+ * @route   PUT /api/bookings/:id/cancel
+ */
 exports.cancelBooking = asyncHandler(async (req, res) => {
-  const booking = await Booking.findById(req.params.id);
-  if (!booking || booking.user.toString() !== req.user.id)
-    return res.status(403).json({ message: 'Unauthorized' });
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Match not found" });
 
-  booking.bookingStatus = 'Cancelled';
-  booking.cancelledAt = new Date();
-  await booking.save();
-  res.status(200).json({ success: true, message: 'Cancelled' });
+    // ADMIN OVERRIDE: Check if user is Captain OR Admin
+    if (booking.user.toString() !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ message: "Not authorized to cancel this match." });
+    }
+
+    booking.bookingStatus = 'Cancelled';
+    
+    // Add an admin note if an admin is performing the action
+    if (req.user.role === 'admin') {
+        booking.adminNote = "Cancelled by Admin Override";
+    }
+
+    await booking.save();
+    
+    // Trigger notification
+    const { notifyUserBookingStatus } = require('../services/notificationService');
+    await notifyUserBookingStatus(booking, 'Cancelled');
+
+    res.status(200).json({ success: true, message: "Booking cancelled successfully." });
 });
 
-exports.markBookingPaid = asyncHandler(async (req, res) => {
-  const booking = await Booking.findById(req.params.id).populate('court');
-  if (!booking) return res.status(404).json({ message: 'Not found' });
+/**
+ * @desc    [ADMIN] Get ALL bookings to view Player-Match relationships & Conflicts
+ * @route   GET /api/bookings/admin/all
+ */
+exports.getAllBookingsAdmin = asyncHandler(async (req, res) => {
+    const { status, date } = req.query;
+    let query = {};
 
-  booking.bookingStatus = 'Confirmed';
-  booking.totalAmount = booking.court.pricePerHour || 0;
-  booking.teamMembers.forEach((m) => (m.paymentStatus = 'Paid'));
-  booking.paidAt = new Date();
+    // Filter by Status or Date if provided
+    if (status) query.bookingStatus = status;
+    if (date) {
+        const queryDate = new Date(date);
+        queryDate.setHours(0,0,0,0);
+        query.date = queryDate;
+    }
 
-  await booking.save();
-  notifyUserBookingStatus(booking, 'Confirmed');
-  res.status(200).json({ success: true, data: booking });
-});
+    const bookings = await Booking.find(query)
+        .populate('court', 'name')
+        .populate('user', 'fullName phone email') // Captain Details
+        .populate('teamMembers.userId', 'fullName') // SEE PLAYER-MATCH RELATIONSHIPS
+        .sort({ date: -1 });
 
-exports.getAllBookings = asyncHandler(async (req, res) => {
-  const { date, status } = req.query;
-  const query = {};
-  if (date) query.date = new Date(date);
-  if (status && status !== 'all') query.bookingStatus = status;
-
-  const bookings = await Booking.find(query)
-    .populate('user', 'fullName')
-    .populate('court', 'name')
-    .sort({ createdAt: -1 });
-
-  res.status(200).json({ success: true, data: bookings });
+    res.status(200).json({ success: true, count: bookings.length, data: bookings });
 });

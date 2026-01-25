@@ -5,8 +5,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import api from '../../api/axiosConfig';
-import { AuthContext } from '../../App';
-
+import { AuthContext } from '../context/AuthContext';
 // Reusable User Card (Memoized)
 const UserCard = React.memo(({ item, isSelected, onToggle }) => {
   const isInactive = item.membership.status !== 'Active' || item.membership.daysLeft <= 0;

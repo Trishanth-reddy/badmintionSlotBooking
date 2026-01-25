@@ -19,7 +19,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { AuthContext } from '../../App';
+import { AuthContext } from '../context/AuthContext';
 import api from '../../api/axiosConfig';
 import { useFocusEffect } from '@react-navigation/native';
 

@@ -37,7 +37,6 @@ const BookingCard = React.memo(({ item, onPress, onCancel, currentUserId }) => {
   const hasPendingRequests = isCaptain && item.joinRequests?.some(r => r.status === 'Pending');
   const myJoinRequest = item.joinRequests?.find(r => (r.user?._id || r.user) === currentUserId);
   
-  // Only show cancel button if user is captain and match isn't already cancelled or completed
   const canCancel = isCaptain && item.bookingStatus !== 'Cancelled' && item.bookingStatus !== 'Completed';
 
   return (
@@ -104,7 +103,8 @@ const BookingHistoryScreen = ({ navigation }) => {
         setBookings(response.data.data);
       }
     } catch (error) {
-      Alert.alert('Error', 'Could not load booking history.');
+      // Silent error or toast preferred here
+      console.log('Error loading history:', error);
     } finally {
       setLoading(false);
     }
@@ -121,11 +121,10 @@ const BookingHistoryScreen = ({ navigation }) => {
           style: "destructive",
           onPress: async () => {
             try {
-              // Using the PUT route defined in your bookings.js: router.put('/:id/cancel', protect, cancelBooking);
               const response = await api.put(`/bookings/${id}/cancel`);
               if (response.data.success) {
                 Alert.alert("Success", "Booking cancelled successfully.");
-                loadBookingHistory(); // Refresh list
+                loadBookingHistory(); 
               }
             } catch (error) {
               const msg = error.response?.data?.message || "Could not cancel booking.";
@@ -151,10 +150,15 @@ const BookingHistoryScreen = ({ navigation }) => {
         renderItem={({ item }) => (
           <BookingCard 
             item={item} 
+            // --- FIX IS HERE: Correct Navigation Nesting ---
             onPress={(i) => navigation.navigate('HomeTab', {
-              screen: 'BookingDetailMain',
-              params: { bookingId: i._id }
+              screen: 'BookingFlow', // 1. Go to the Stack
+              params: {
+                screen: 'BookingDetailMain', // 2. Go to the specific screen in that Stack
+                params: { bookingId: i._id } // 3. Pass the ID
+              }
             })}
+            // ------------------------------------------------
             onCancel={handleCancelBooking}
             currentUserId={currentUserId} 
           />

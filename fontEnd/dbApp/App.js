@@ -1,23 +1,23 @@
-import React, { useState, useEffect, createContext, useMemo, useRef } from 'react';
-import { Text, ActivityIndicator, View } from 'react-native';
-import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
+import React, { useContext, useEffect, useRef } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { jwtDecode } from 'jwt-decode'; // Updated import style for modern versions
 import * as Notifications from 'expo-notifications';
 
-// Context & Theme
+// --- CONTEXT IMPORTS ---
 import { ThemeProvider } from './src/context/ThemeContext';
+// ✅ IMPORT FROM NEW FILE (Breaks the cycle)
+import { AuthContext, AuthProvider } from './src/context/AuthContext'; 
+
+// --- SERVICE & HELPER IMPORTS ---
+// ✅ Import navigation ref to connect it
+import { navigationRef } from './src/navigation/RootNavigation';
+// ✅ Import Push Notification Service
+// ✅ Correct (matches your screenshot)
 import { registerForPushNotificationsAsync } from './services/pushNotifications';
-
-// --- CRITICAL PATH FIX ---
-// If your 'api' folder is in the root (next to App.js), use './api/axiosConfig'
-// If it is inside src, use './src/api/axiosConfig'
-import api from './api/axiosConfig'; 
-
-// Screen Imports
+// --- SCREEN IMPORTS ---
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import OtpVerificationScreen from './src/screens/OtpVerificationScreen';
 import LoginScreen from './src/screens/LoginScreen';
@@ -31,7 +31,6 @@ import BookingConfirmationScreen from './src/screens/BookingConfirmationScreen';
 import BookingDetailScreen from './src/screens/BookingDetailScreen';
 import BookingHistoryScreen from './src/screens/BookingHistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import ChangePasswordScreen from './src/screens/ChangePasswordScreen';
 import ContactPage from './src/screens/ContactPage';
 import AdminHomeScreen from './src/screens/AdminDashboard/AdminHomeScreen';
 import UserManagementScreen from './src/screens/AdminDashboard/UserManagementScreen';
@@ -39,20 +38,10 @@ import BookingManagementScreen from './src/screens/AdminDashboard/BookingManagem
 import AdminProfileScreen from './src/screens/AdminDashboard/AdminProfileScreen';
 import AnalyticsScreen from './src/screens/AdminDashboard/AnalyticsScreen';
 
-// 1. Global Notification Configuration
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
-
-export const AuthContext = createContext(null);
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// --- Navigators ---
+// --- NAVIGATORS ---
 
 const BookingStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -110,54 +99,24 @@ const AuthStack = () => (
   </Stack.Navigator>
 );
 
-// --- Main App Content ---
-
+// --- MAIN CONTENT WRAPPER ---
+// This component consumes the AuthContext provided by App() below
 const AppContent = () => {
-  const [userToken, setUserToken] = useState(null);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  const navigationRef = useNavigationContainerRef();
+  const { userToken, user, loading } = useContext(AuthContext); 
   const responseListener = useRef();
 
-  const isTokenValid = (token) => {
-    if (!token) return false;
-    try {
-      const decoded = jwtDecode(token);
-      return Date.now() < decoded.exp * 1000;
-    } catch { return false; }
-  };
-
-  useEffect(() => {
-    const bootstrapAsync = async () => {
-      try {
-        const token = await AsyncStorage.getItem('userToken');
-        const userData = await AsyncStorage.getItem('userData');
-        if (token && isTokenValid(token)) {
-          setUserToken(token);
-          setUser(JSON.parse(userData));
-        }
-      } catch (e) { console.error('Auth boot error', e); }
-      setLoading(false);
-    };
-    bootstrapAsync();
-  }, []);
-
+  // Notification Logic
   useEffect(() => {
     if (userToken) {
-      registerForPushNotificationsAsync().then(async (pushToken) => {
-        if (pushToken) {
-          try {
-            await api.post('/users/save-push-token', { token: pushToken });
-          } catch (err) { console.error('Token sync failed', err); }
-        }
-      });
+      registerForPushNotificationsAsync();
 
+      // Listen for when user taps a notification
       responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
         const data = response.notification.request.content.data;
         const { screen, bookingId } = data;
 
-        if (screen === 'BookingDetailMain' && bookingId) {
+        // Navigate using the global ref if needed
+        if (screen === 'BookingDetailMain' && bookingId && navigationRef.isReady()) {
           navigationRef.navigate('MainUserTabs', {
             screen: 'HomeTab',
             params: {
@@ -170,32 +129,16 @@ const AppContent = () => {
           });
         }
       });
-
-      return () => {
-        if (responseListener.current) {
-          Notifications.removeNotificationSubscription(responseListener.current);
-        }
-      };
     }
-  }, [userToken]);
 
-  const authContextValue = useMemo(() => ({
-    user,
-    userToken,
-    signIn: async (token, userData) => {
-      await AsyncStorage.setItem('userToken', token);
-      await AsyncStorage.setItem('userData', JSON.stringify(userData));
-      setUserToken(token);
-      setUser(userData);
-    },
-    signOut: async () => {
-      await AsyncStorage.removeItem('userToken');
-      await AsyncStorage.removeItem('userData');
-      setUserToken(null);
-      setUser(null);
-    },
-    loading,
-  }), [user, userToken, loading]);
+    // Cleanup
+    // ✅ PASTE THIS - The correct way to clean up
+return () => {
+  if (responseListener.current) {
+    responseListener.current.remove();
+  }
+};
+  }, [userToken]);
 
   if (loading) {
     return (
@@ -206,26 +149,29 @@ const AppContent = () => {
   }
 
   return (
-    <AuthContext.Provider value={authContextValue}>
-      <NavigationContainer ref={navigationRef}>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          {!userToken ? (
-            <Stack.Screen name="Auth" component={AuthStack} />
-          ) : user?.role === 'admin' ? (
-            <Stack.Screen name="AdminRoot" component={AdminStack} />
-          ) : (
-            <Stack.Screen name="MainUserTabs" component={MainUserTabs} />
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
-    </AuthContext.Provider>
+    // ✅ CONNECT THE NAVIGATION REF HERE
+    <NavigationContainer ref={navigationRef}>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {!userToken ? (
+          <Stack.Screen name="Auth" component={AuthStack} />
+        ) : user?.role === 'admin' ? (
+          <Stack.Screen name="AdminRoot" component={AdminStack} />
+        ) : (
+          <Stack.Screen name="MainUserTabs" component={MainUserTabs} />
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 };
 
+// --- ROOT APP COMPONENT ---
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      {/* ✅ WRAP ENTIRE APP IN AUTH PROVIDER */}
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </ThemeProvider>
   );
 }

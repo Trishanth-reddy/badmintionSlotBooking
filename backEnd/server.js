@@ -29,14 +29,14 @@ app.use(helmet());
 app.use(compression());
 
 // Rate Limiting (Limits each IP to 100 requests per 15 minutes)
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, 
-  message: 'Too many requests from this IP, please try again after 15 minutes',
-  standardHeaders: true, 
-  legacyHeaders: false,
-});
-app.use('/api', limiter); // Apply to all API routes
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 100000, 
+//   message: 'Too many requests from this IP, please try again after 15 minutes',
+//   standardHeaders: true, 
+//   legacyHeaders: false,
+// });
+// app.use('/api', limiter); // Apply to all API routes
 
 // Standard Middleware
 app.use(cors()); // In production, you might restrict this to your app's domain

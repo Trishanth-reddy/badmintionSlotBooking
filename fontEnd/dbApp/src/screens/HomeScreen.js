@@ -13,7 +13,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { AuthContext } from '../../App';
+import { AuthContext } from '../context/AuthContext';
 import api from '../../api/axiosConfig';
 
 const { width } = Dimensions.get('window');

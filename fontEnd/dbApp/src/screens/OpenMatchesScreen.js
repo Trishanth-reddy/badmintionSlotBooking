@@ -13,8 +13,7 @@
   import { MaterialIcons } from '@expo/vector-icons';
   import { useFocusEffect } from '@react-navigation/native';
   import api from '../../api/axiosConfig';
-  import { AuthContext } from '../../App'; // Import AuthContext to check user status
-
+import { AuthContext } from '../context/AuthContext';
   const OpenMatchesScreen = ({ navigation }) => {
     const { user } = useContext(AuthContext); // Access logged-in user data
     const [matches, setMatches] = useState([]);

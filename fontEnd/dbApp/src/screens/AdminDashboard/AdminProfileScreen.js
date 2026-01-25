@@ -8,7 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { AuthContext } from '../../../App';
+import { AuthContext } from '../../context/AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
 
 const adminData = {

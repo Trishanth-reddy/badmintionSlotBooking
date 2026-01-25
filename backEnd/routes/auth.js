@@ -1,27 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
-const { register, login, getProfile, updateProfile, changePassword, logout, deleteAccount } = require('../controllers/authController');
-const { protect } = require('../middleware/auth');
-
-// Import the NEW validators
-const { validateRegister, validateLogin } = require('../middleware/validation'); 
+// Import the new controller functions
+const { initiateRegistration, register, login } = require('../controllers/authController');
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: 10, 
-  message: { message: 'Too many login attempts, please try again later.' }
+  message: { message: 'Too many attempts, please try again later.' }
 });
 
-// Public routes (With Validation Middleware)
-router.post('/register', authLimiter, validateRegister, register); // <--- Uses validateRegister
-router.post('/login', authLimiter, validateLogin, login);       // <--- Uses validateLogin
+// --- NEW ROUTES ---
 
-// Protected routes
-router.get('/profile', protect, getProfile);
-router.put('/profile', protect, updateProfile);
-router.put('/change-password', protect, changePassword);
-router.post('/logout', protect, logout);
-router.delete('/account', protect, deleteAccount);
+// 1. Registration Flow (This is the one missing!)
+router.post('/send-register-otp', authLimiter, initiateRegistration); 
+router.post('/register', authLimiter, register);
+
+// 2. Login Flow
+router.post('/login', authLimiter, login);
 
 module.exports = router;

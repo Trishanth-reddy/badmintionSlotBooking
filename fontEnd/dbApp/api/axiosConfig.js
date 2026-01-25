@@ -1,9 +1,15 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+// ✅ Import the helper to navigate safely
+import * as RootNavigation from '../src/navigation/RootNavigation';
 // Configuration
-// strictly use production URL
-const API_BASE_URL = 'http://10.10.51.71:5000/api';
+// strictly use production URL as you requested
+// const API_BASE_URL = 'http://10.10.51.71:5000/api';
+// ❌ DELETE THIS
+// const API_BASE_URL = 'http://192.168.0.10:5000/api';
+
+// ✅ USE THE PUBLIC TUNNEL LINK (Add /api at the end)
+const API_BASE_URL = 'https://afd8f395b65d.ngrok-free.app/api';
 
 console.log(`[Config] Connecting to: ${API_BASE_URL}`);
 
@@ -41,8 +47,11 @@ api.interceptors.response.use(
 
     // 401: Token Expired
     if (error.response?.status === 401) {
-      await AsyncStorage.clear();
-      // Optional: Navigate to login here if you have navigation reference
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userData');
+      
+      // ✅ Use the safe helper to go back to Login
+      RootNavigation.reset('Auth');
     }
 
     return Promise.reject(error);

@@ -13,8 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import api from '../../api/axiosConfig';
-import { AuthContext } from '../../App';
-
+import { AuthContext } from '../context/AuthContext';
 const { width } = Dimensions.get('window');
 
 const formatDate = (d) => new Date(d).toLocaleDateString('en-US', { 

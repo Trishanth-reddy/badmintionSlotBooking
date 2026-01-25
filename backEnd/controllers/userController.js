@@ -293,3 +293,29 @@ exports.deleteUser = asyncHandler(async (req, res) => {
     message: 'User deleted successfully',
   });
 });
+
+// @desc    Search ALL users (for Team Selection)
+// @route   GET /api/users/search
+// @access  Private
+exports.searchUsers = asyncHandler(async (req, res) => {
+  const { query } = req.query;
+
+  if (!query) {
+    return res.status(400).json({ message: "Please provide a search term" });
+  }
+
+  // Regex Search: Matches Name OR Phone (Case-insensitive)
+  const users = await User.find({
+    $or: [
+      { fullName: { $regex: query, $options: 'i' } },
+      { phone: { $regex: query, $options: 'i' } }
+    ]
+  })
+  .select('_id fullName phone profilePicture role') 
+  .limit(20); 
+
+  res.status(200).json({
+    success: true,
+    data: users
+  });
+});

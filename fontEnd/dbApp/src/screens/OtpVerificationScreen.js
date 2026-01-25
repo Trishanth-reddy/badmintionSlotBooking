@@ -14,17 +14,16 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// Assuming AuthContext is in a context folder, update if path is different
-import { AuthContext } from '../../App'; 
+import { AuthContext } from '../context/AuthContext';
 import api from '../../api/axiosConfig';
 
 const OtpVerificationScreen = ({ route, navigation }) => {
   const authContext = useContext(AuthContext);
   
-  // --- START OF FIX 1 ---
-  // We ONLY need the email, which our corrected RegisterScreen provides.
-  const { email } = route.params; 
-  // --- END OF FIX 1 ---
+  // ✅ FIX 1: Extract the FULL payload passed from RegisterScreen
+  // We need password and fullName to complete the registration.
+  const { payload } = route.params; 
+  const { email, fullName, password } = payload; 
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
@@ -44,15 +43,12 @@ const OtpVerificationScreen = ({ route, navigation }) => {
 
   // Handle OTP Input
   const handleOtpChange = (text, index) => {
-    // This allows pasting the full OTP
     if (text.length > 1 && text.length === 6) {
       const newOtp = text.split('');
       setOtp(newOtp);
-      // Focus on the last input after pasting
       inputs.current[5]?.focus();
       return;
     }
-    // Handle single digit input
     const newOtp = [...otp];
     newOtp[index] = text;
     setOtp(newOtp);
@@ -65,7 +61,7 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     }
   };
 
-  // Handle Verification
+  // Handle Verification (The Main Fix)
   const handleVerify = async () => {
     const enteredOtp = otp.join('');
     if (enteredOtp.length !== 6) {
@@ -76,14 +72,14 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     setLoading(true);
 
     try {
-      // --- START OF FIX 2 ---
-      // We ONLY send the email and the OTP.
-      // The backend will find the rest of the user data in the OtpLog.
-      const response = await api.post('/auth/verify-otp', {
+      // ✅ FIX 2: Call '/register' with ALL user data
+      // This matches your backend: router.post('/register', register);
+      const response = await api.post('/auth/register', {
+        fullName,
         email,
-        otp: enteredOtp,
+        password,
+        otp: enteredOtp, // The code the user just typed
       });
-      // --- END OF FIX 2 ---
 
       setLoading(false);
 
@@ -92,37 +88,18 @@ const OtpVerificationScreen = ({ route, navigation }) => {
         await AsyncStorage.setItem('userToken', response.data.token);
         await AsyncStorage.setItem('userData', JSON.stringify(response.data.user));
 
-        // Call signIn from AuthContext
         if (authContext && authContext.signIn) {
           await authContext.signIn(response.data.token, response.data.user);
         }
 
-        Alert.alert(
-          "Success",
-          "Account verified successfully!",
-          [
-            {
-              text: "Continue",
-              // The user is now logged in. We can send them to the main app stack.
-              // 'AppStack' or 'Home' might be better than 'SubscriptionPlans'
-              // But leaving 'SubscriptionPlans' as it was in your original file.
-              onPress: () => authContext.signIn(response.data.token, response.data.user)
-            },
-          ]
-        );
+        Alert.alert("Success", "Account created successfully!");
       }
     } catch (error) {
       setLoading(false);
-      console.error("Verification error:", error);
+      console.error("Verification error:", error.response?.data);
 
-      const errorMessage = error.response?.data?.message || error.message || "Invalid or expired OTP";
-      const attemptsRemaining = error.response?.data?.attemptsRemaining;
-
-      if (attemptsRemaining) {
-        Alert.alert("Verification Error", `${errorMessage}\nAttempts remaining: ${attemptsRemaining}`);
-      } else {
-        Alert.alert("Verification Error", errorMessage);
-      }
+      const errorMessage = error.response?.data?.message || "Invalid or expired OTP";
+      Alert.alert("Verification Error", errorMessage);
     }
   };
 
@@ -132,31 +109,19 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     setCountdown(60);
 
     try {
-      // --- START OF FIX 3 ---
-      // We ONLY need to send the email.
-      // The backend will handle the rest.
-      const response = await api.post('/auth/resend-otp', {
+      // ✅ FIX 3: Use the correct route '/send-register-otp'
+      // Your backend doesn't have '/resend-otp', it reuses the send endpoint.
+      await api.post('/auth/send-register-otp', {
         email,
       });
-      // --- END OF FIX 3 ---
 
       setResendLoading(false);
-
-      // --- START OF FIX 4 ---
-      // REMOVED the "response.data.otp" from the alert.
-      // This was a security risk.
-      Alert.alert(
-        "New OTP Sent",
-        "A new verification code has been sent to your email."
-      );
-      // --- END OF FIX 4 ---
+      Alert.alert("New OTP Sent", "A new code has been sent to your email.");
 
     } catch (error) {
       setResendLoading(false);
       setCountdown(0);
-      console.error("Resend OTP error:", error);
-
-      const errorMessage = error.response?.data?.message || error.message || "Could not resend OTP";
+      const errorMessage = error.response?.data?.message || "Could not resend OTP";
       Alert.alert("Error", errorMessage);
     }
   };
@@ -191,7 +156,7 @@ const OtpVerificationScreen = ({ route, navigation }) => {
             </View>
             <Text style={styles.welcomeTitle}>Enter OTP</Text>
             <Text style={styles.welcomeSubtitle}>
-              A 6-digit code was sent to your email:
+              A 6-digit code was sent to:
             </Text>
             <Text style={styles.phoneText}>{email}</Text>
           </View>
@@ -203,7 +168,7 @@ const OtpVerificationScreen = ({ route, navigation }) => {
                   key={index}
                   style={styles.otpInput}
                   keyboardType="number-pad"
-                  maxLength={6} // Allow pasting
+                  maxLength={1} // Changed to 1 to prevent double paste issues, logic handles paste separately
                   onChangeText={(text) => handleOtpChange(text, index)}
                   value={digit}
                   ref={(ref) => (inputs.current[index] = ref)}
@@ -228,11 +193,11 @@ const OtpVerificationScreen = ({ route, navigation }) => {
                 {loading ? (
                   <>
                     <ActivityIndicator color="#fff" />
-                    <Text style={styles.verifyButtonText}>Verifying...</Text>
+                    <Text style={styles.verifyButtonText}>Creating Account...</Text>
                   </>
                 ) : (
                   <>
-                    <Text style={styles.verifyButtonText}>Verify & Continue</Text>
+                    <Text style={styles.verifyButtonText}>Verify & Create Account</Text>
                     <MaterialIcons name="arrow-forward" size={20} color="#fff" />
                   </>
                 )}
@@ -313,7 +278,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
-  phoneText: { // Renamed from phoneText to emailText might be good, but key is fine
+  phoneText: {
     fontSize: 18,
     color: '#fff',
     fontWeight: '600',

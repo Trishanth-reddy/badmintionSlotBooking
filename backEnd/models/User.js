@@ -5,37 +5,32 @@ const userSchema = new mongoose.Schema(
   {
     fullName: {
       type: String,
-      required: [true, 'Please provide a full name'],
-      trim: true,
-    },
-    phone: {
-      type: String,
-      required: [true, 'Please provide a phone number'],
-      unique: true,
+      default: '',
       trim: true,
     },
     email: {
       type: String,
-      unique: true, 
-      sparse: true,    // Allows multiple users to have no email
+      required: [true, 'Email is required'], // Now Required
+      unique: true,
       lowercase: true,
       trim: true,
-      // FIX: Use a custom validator instead of 'match'
       validate: {
         validator: function(v) {
-          // If email is null, undefined, or empty string, it's valid (optional)
-          if (!v || v.trim() === "") return true;
-          // Otherwise, check the regex
           return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
         },
         message: 'Please enter a valid email address'
       }
     },
+    phone: {
+      type: String,
+      default: '', // Now Optional
+      trim: true,
+    },
     password: {
       type: String,
       required: [true, 'Please provide a password'],
       minlength: 8,
-      select: false, 
+      select: false,
     },
     role: {
       type: String,
@@ -61,7 +56,7 @@ const userSchema = new mongoose.Schema(
       },
       daysLeft: { type: Number, default: 0 },
       expiryDate: { type: Date, default: null },
-      expoPushToken: { type: String, default: null }, 
+      expoPushToken: { type: String, default: null },
     },
     lastLogin: Date,
   },
@@ -69,9 +64,10 @@ const userSchema = new mongoose.Schema(
 );
 
 // Indexes
-userSchema.index({ phone: 1 });
+// Note: We removed the unique index on phone since it is now optional
+userSchema.index({ email: 1 });
 
-// Password Hashing
+// Password Hashing Middleware
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(10);
@@ -79,6 +75,7 @@ userSchema.pre('save', async function (next) {
   next();
 });
 
+// Helper Method
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };

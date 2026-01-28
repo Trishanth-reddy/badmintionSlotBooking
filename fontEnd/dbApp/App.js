@@ -36,7 +36,6 @@ import AdminHomeScreen from './src/screens/AdminDashboard/AdminHomeScreen';
 import UserManagementScreen from './src/screens/AdminDashboard/UserManagementScreen';
 import BookingManagementScreen from './src/screens/AdminDashboard/BookingManagementScreen';
 import AdminProfileScreen from './src/screens/AdminDashboard/AdminProfileScreen';
-import AnalyticsScreen from './src/screens/AdminDashboard/AnalyticsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -85,7 +84,6 @@ const AdminStack = () => (
     <Stack.Screen name="AdminHome" component={AdminHomeScreen} />
     <Stack.Screen name="BookingManagement" component={BookingManagementScreen} />
     <Stack.Screen name="UserManagement" component={UserManagementScreen} />
-    <Stack.Screen name="Analytics" component={AnalyticsScreen} />
     <Stack.Screen name="AdminProfile" component={AdminProfileScreen} />
   </Stack.Navigator>
 );

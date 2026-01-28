@@ -10,7 +10,7 @@ const userSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      required: [true, 'Email is required'], // Now Required
+      required: [true, 'Email is required'],
       unique: true,
       lowercase: true,
       trim: true,
@@ -23,7 +23,7 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      default: '', // Now Optional
+      default: '', 
       trim: true,
     },
     password: {
@@ -48,6 +48,8 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
     bio: { type: String, default: '' },
+    
+    // 👇 UPDATED MEMBERSHIP OBJECT 👇
     membership: {
       status: { 
         type: String, 
@@ -57,14 +59,19 @@ const userSchema = new mongoose.Schema(
       daysLeft: { type: Number, default: 0 },
       expiryDate: { type: Date, default: null },
       expoPushToken: { type: String, default: null },
+      planName: { type: String, default: null },
+      startDate: { type: Date, default: null },
+
+      // ✅ REQUIRED: Tracks which warning (5, 3, 1) was last sent
+      lastWarningDay: { type: Number, default: null } 
     },
+    
     lastLogin: Date,
   },
   { timestamps: true }
 );
 
 // Indexes
-// Note: We removed the unique index on phone since it is now optional
 userSchema.index({ email: 1 });
 
 // Password Hashing Middleware

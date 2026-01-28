@@ -2,79 +2,69 @@ const cron = require('node-cron');
 const User = require('../models/User'); 
 const { notifyMembershipExpiry } = require('./notificationService'); 
 
-/**
- * Finds all users with active subscriptions expiring in roughly 1 to 3 days.
- */
 const checkAndSendExpiryNotifications = async () => {
   console.log(`\n--- 🕒 [${new Date().toISOString()}] Running Expiry Check ---`);
   
   try {
     const today = new Date();
-    // normalize 'today' to get accurate day difference
-    today.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0); // Normalize 'today' to midnight
 
-    // 1. Define the Search Window
-    // Start: Tomorrow at 00:00:00
-    const searchStart = new Date(today);
-    searchStart.setDate(today.getDate() + 1);
-
-    // End: 4 Days from now at 00:00:00 (Exclusive)
-    // This ensures we catch everything for days 1, 2, and 3
-    const searchEnd = new Date(today);
-    searchEnd.setDate(today.getDate() + 4);
-
-    console.log(`🔎 Searching for expiry dates between:`);
-    console.log(`   Start: ${searchStart.toISOString()}`);
-    console.log(`   End:   ${searchEnd.toISOString()}`);
-
-    // 2. Broad Query: Get everyone expiring in this window
-    // We use $gte (Greater Than Equal) and $lt (Less Than) to handle times correctly
-    const usersToNotify = await User.find({
+    // 1. Fetch ALL Active Users (Safer than date ranges to ensure we catch expired users)
+    const activeUsers = await User.find({
       'membership.status': 'Active',
-      'membership.expiryDate': { 
-        $gte: searchStart, 
-        $lt: searchEnd 
-      }
-    }).select('fullName membership.expoPushToken membership.expiryDate');
+      'membership.expiryDate': { $exists: true }
+    });
 
-    // --- DEBUG LOG: Print EVERYONE found ---
-    if (usersToNotify.length === 0) {
-        console.log('❌ No users found in this date range.');
-        
-        // EXTRA DEBUG: Print ALL active users to see where they actually are
-        const allActive = await User.find({'membership.status': 'Active'}).select('fullName membership.expiryDate');
-        console.log("📋 --- ALL ACTIVE USERS IN DB (For Debugging) ---");
-        allActive.forEach(u => {
-            console.log(`   User: ${u.fullName} | Expires: ${u.membership.expiryDate}`);
-        });
-        console.log("------------------------------------------------");
+    if (activeUsers.length === 0) {
+        console.log('✅ No active memberships found.');
         return;
     }
 
-    console.log(`✅ Found ${usersToNotify.length} potential users.`);
+    console.log(`🔎 Checking ${activeUsers.length} active users...`);
 
-    // 3. Loop through and verify specific days
-    for (const user of usersToNotify) {
+    for (const user of activeUsers) {
       const expiry = new Date(user.membership.expiryDate);
-      
-      // Calculate difference in milliseconds
-      // We normalize 'expiry' to midnight to match 'today'
-      const expiryMidnight = new Date(expiry);
-      expiryMidnight.setHours(0,0,0,0);
+      expiry.setHours(0, 0, 0, 0); // Normalize expiry to midnight
 
-      const diffTime = expiryMidnight.getTime() - today.getTime();
+      // Calculate difference in days
+      const diffTime = expiry.getTime() - today.getTime();
       const daysLeft = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-      console.log(`   👤 Checking: ${user.fullName}`);
-      console.log(`      Expiry: ${expiry.toISOString()}`);
-      console.log(`      Days Left Calc: ${daysLeft}`);
+      // --- LOGIC 1: AUTO-DEACTIVATE EXPIRED USERS ---
+      if (daysLeft < 0) {
+          console.log(` ❌ [EXPIRED] Deactivating ${user.fullName} (Expired ${Math.abs(daysLeft)} days ago)`);
+          
+          user.membership.status = 'Inactive';
+          user.membership.lastWarningDay = null; // Reset for future renewals
+          await user.save();
+          
+          // Send "Expired" notification (only once because status changes to Inactive immediately)
+          await notifyMembershipExpiry(user, daysLeft); 
+          continue; // Skip the rest of the loop
+      }
 
-      // Only notify if exactly 1, 2, or 3 days
-      if ([1, 2, 3].includes(daysLeft)) {
-          console.log(`      🔔 SENDING NOTIFICATION (${daysLeft} days left)`);
+      // --- LOGIC 2: SEND REMINDERS (5, 3, 1, 0 Days) ---
+      if ([5, 3, 1, 0].includes(daysLeft)) {
+          
+          // 🛑 CHECK: Did we already send this specific warning?
+          if (user.membership.lastWarningDay === daysLeft) {
+              console.log(` ⏭️ [SKIP] Already notified ${user.fullName} for ${daysLeft} days left.`);
+              continue;
+          }
+
+          console.log(` 🔔 [NOTIFY] ${user.fullName} has ${daysLeft} days left.`);
+          
+          // 1. Send Notification
           await notifyMembershipExpiry(user, daysLeft);
-      } else {
-          console.log(`      Unknown day range (${daysLeft}), skipping.`);
+
+          // 2. Mark as Sent in DB
+          user.membership.lastWarningDay = daysLeft;
+          await user.save();
+      } 
+      // Reset logic: If user moves from day 5 to day 4, reset the flag so day 3 can trigger later
+      else if (user.membership.lastWarningDay !== null && user.membership.lastWarningDay !== daysLeft) {
+          user.membership.lastWarningDay = null;
+          await user.save();
       }
     }
     
@@ -89,11 +79,10 @@ const checkAndSendExpiryNotifications = async () => {
  * Schedules the cron job.
  */
 const scheduleExpiryNotifications = () => {
-  // Runs every minute for testing ('* * * * *')
-  // Change to ('0 10 * * *') for production (10 AM Daily)
+  // Testing: Run Every Minute
   const cronString = '0 10 * * *'; 
 
-  console.log(`Scheduler set to run with pattern: "${cronString}"`);
+  console.log(`📅 Scheduler initialized. Pattern: "${cronString}"`);
 
   cron.schedule(cronString, checkAndSendExpiryNotifications, {
     timezone: "Asia/Kolkata"

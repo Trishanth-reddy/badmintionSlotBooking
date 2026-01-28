@@ -16,7 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../../api/axiosConfig';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 // --- 1. HELPER COMPONENTS ---
 
@@ -64,7 +64,6 @@ const TimeCard = ({ date, time }) => (
 // --- 2. MAIN SCREEN ---
 
 const BookingDetailScreen = ({ route, navigation }) => {
-  // Unify ID from manual navigation (bookingId) or Deep Link (id)
   const { bookingId, id } = route.params;
   const targetId = bookingId || id;
 
@@ -74,7 +73,6 @@ const BookingDetailScreen = ({ route, navigation }) => {
   const [actionLoading, setActionLoading] = useState(false);
   const [showQR, setShowQR] = useState(false);
 
-  // Fetch Current User ID from storage
   useEffect(() => {
     const getUserId = async () => {
       const userData = await AsyncStorage.getItem('userData');
@@ -107,8 +105,6 @@ const BookingDetailScreen = ({ route, navigation }) => {
       loadBookingDetails();
     }, [loadBookingDetails])
   );
-
-  // --- HANDLERS ---
 
   const handleSendJoinRequest = async () => {
     try {
@@ -155,7 +151,6 @@ const BookingDetailScreen = ({ route, navigation }) => {
     });
   };
 
-  // UI Checks
   const isCaptain = useMemo(() => 
     booking?.user?._id === currentUserId || booking?.user === currentUserId, 
   [booking, currentUserId]);
@@ -211,12 +206,17 @@ const BookingDetailScreen = ({ route, navigation }) => {
             
             {booking.teamMembers?.map((member, index) => (
               <View key={index} style={styles.playerRow}>
-                <MaterialIcons name="person" size={20} color="#8b5cf6" />
-                <Text style={styles.playerName}>
-                  {/* Access the populated fullName from the userId object */}
-                  {member.userId?.fullName || "Anonymous Player"} 
-                  {member.userId?._id === booking.user?._id && " (Captain)"}
-                </Text>
+                <View style={styles.playerInfo}>
+                    <View style={styles.playerAvatar}>
+                        <Text style={styles.playerInitial}>{(member.userId?.fullName || 'A').charAt(0)}</Text>
+                    </View>
+                    <View>
+                        <Text style={styles.playerName}>
+                        {member.userId?.fullName || "Anonymous Player"} 
+                        </Text>
+                        {member.userId?._id === booking.user?._id && <Text style={styles.captainLabel}>Captain</Text>}
+                    </View>
+                </View>
                 <Text style={[styles.payStatus, { color: member.paymentStatus === 'Paid' ? '#16a34a' : '#ca8a04' }]}>
                   {member.paymentStatus}
                 </Text>
@@ -340,9 +340,16 @@ const styles = StyleSheet.create({
   section: { marginTop: 24 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#1f2937' },
-  playerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-  playerName: { flex: 1, marginLeft: 10, fontSize: 14, color: '#1f2937', fontWeight: '500' },
+  
+  // Updated Player Row Styles
+  playerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  playerInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  playerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f3f4f6', justifyContent: 'center', alignItems: 'center' },
+  playerInitial: { fontSize: 14, fontWeight: 'bold', color: '#6b7280' },
+  playerName: { fontSize: 14, color: '#1f2937', fontWeight: '600' },
+  captainLabel: { fontSize: 10, color: '#8b5cf6', fontWeight: 'bold' },
   payStatus: { fontSize: 12, fontWeight: 'bold' },
+
   requestSection: { backgroundColor: '#fff5f5', padding: 15, borderRadius: 15, borderStyle: 'dashed', borderWidth: 1, borderColor: '#feb2b2' },
   requestItem: { flexDirection: 'row', backgroundColor: '#fff', padding: 12, borderRadius: 12, marginBottom: 10, alignItems: 'center', elevation: 1 },
   requestInfo: { flex: 1 },

@@ -14,37 +14,47 @@ const courtRoutes = require('./routes/courts');
 const bookingRoutes = require('./routes/bookings');
 const statsRoutes = require('./routes/stats');
 const contactRoutes = require('./routes/contactRequest');
+const adminRoutes = require('./routes/adminRoutes');
 const { scheduleExpiryNotifications } = require('./services/notificationScheduler');
 
 const app = express();
 
 // ==========================================
-// 1. SECURITY & PERFORMANCE MIDDLEWARE
+// 1. DEV CONFIGURATION (CRITICAL FIX)
 // ==========================================
 
-// Set Security Headers (Prevents XSS, Sniffing, etc.)
+// ✅ Fix for Ngrok/Tunneling issues
+// This prevents the "ERR_ERL_UNEXPECTED_X_FORWARDED_FOR" crash
+app.set('trust proxy', 1);
+
+// ==========================================
+// 2. SECURITY & PERFORMANCE MIDDLEWARE
+// ==========================================
+
+// Set Security Headers
 app.use(helmet());
 
-// Compress responses (Makes API faster)
+// Compress responses
 app.use(compression());
 
-// Rate Limiting (Limits each IP to 100 requests per 15 minutes)
-// const limiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 100000, 
-//   message: 'Too many requests from this IP, please try again after 15 minutes',
-//   standardHeaders: true, 
-//   legacyHeaders: false,
-// });
-// app.use('/api', limiter); // Apply to all API routes
+// Rate Limiting (Relaxed for Development)
+// Kept high so you don't get blocked while testing
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit to 1000 requests (plenty for dev)
+  message: 'Too many requests from this IP, please try again after 15 minutes',
+  standardHeaders: true, 
+  legacyHeaders: false,
+});
+app.use('/api', limiter); 
 
 // Standard Middleware
-app.use(cors()); // In production, you might restrict this to your app's domain
-app.use(express.json()); // Built-in body parser
+app.use(cors()); 
+app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 
 // ==========================================
-// 2. DATABASE CONNECTION
+// 3. DATABASE CONNECTION
 // ==========================================
 const connectDB = async () => {
   try {
@@ -61,7 +71,7 @@ connectDB();
 scheduleExpiryNotifications();
 
 // ==========================================
-// 3. ROUTES
+// 4. ROUTES
 // ==========================================
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -70,22 +80,22 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/contact', contactRoutes);
-
+app.use('/api/admin', adminRoutes); // <--- ADD THIS
 // Health Check
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'OK', uptime: process.uptime() });
 });
 
 // ==========================================
-// 4. GLOBAL ERROR HANDLING (Prevent Crashes)
+// 5. GLOBAL ERROR HANDLING
 // ==========================================
 app.use((err, req, res, next) => {
   console.error('🔥 Server Error:', err.stack);
   
-  // Don't leak stack traces to the client in production
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   res.status(statusCode).json({
     message: err.message,
+    // Show full stack trace in development mode for easier debugging
     stack: process.env.NODE_ENV === 'production' ? null : err.stack,
   });
 });

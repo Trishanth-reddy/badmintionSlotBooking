@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,69 +7,68 @@ import {
   FlatList,
   Dimensions,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Image
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
-const COURT_CARD_HEIGHT = 170;
+const COURT_CARD_HEIGHT = 220; 
 
-// Static Data (In prod, fetch from API if needed, but static is fastest)
+// --- 1. COURT DATA WITH LOCAL IMAGES ---
 const predefinedCourts = [
-  { _id: '69086b372af5aa7c81d55348', name: 'Court 1 - Premium', rating: 4.8, reviews: 245, pricePerHour: 499, features: ['AC', 'LED Lights', 'Professional'] },
-  { _id: '69086b372af5aa7c81d55349', name: 'Court 2 - Standard', rating: 4.5, reviews: 189, pricePerHour: 399, features: ['AC', 'LED Lights'] },
+  { 
+    _id: '69086b372af5aa7c81d55348', 
+    name: 'Court 1', 
+    // Use require() for local assets
+    image: require('../../assets/Court1.jpeg') 
+  },
+  { 
+    _id: '69086b372af5aa7c81d55349', 
+    name: 'Court 2', 
+    // Use require() for local assets
+    image: require('../../assets/Court2.jpeg') 
+  },
 ];
 
 const CourtCard = React.memo(({ item, isSelected, onSelect }) => (
   <TouchableOpacity
     style={[styles.courtCard, isSelected && styles.courtCardSelected]}
     onPress={() => onSelect(item)}
-    activeOpacity={0.7}
+    activeOpacity={0.9}
   >
-    <View style={styles.courtCardTop}>
-      <View style={styles.courtImageContainer}>
-        <Text style={styles.courtImage}>🏸</Text>
+    {/* Court Image: Passed directly as source (no {uri: ...}) */}
+    <Image source={item.image} style={styles.courtImage} resizeMode="cover" />
+    
+    {/* Overlay for Selection State */}
+    {isSelected && (
+      <View style={styles.selectedOverlay}>
+        <View style={styles.checkmarkCircle}>
+           <MaterialIcons name="check" size={24} color="#fff" />
+        </View>
       </View>
-      <View style={styles.courtHeaderInfo}>
+    )}
+
+    {/* Court Details */}
+    <View style={styles.courtDetails}>
+      <View style={styles.courtHeader}>
         <Text style={styles.courtName}>{item.name}</Text>
-        <View style={styles.ratingContainer}>
-          <MaterialIcons name="star" size={16} color="#fbbf24" />
-          <Text style={styles.ratingText}>{item.rating}</Text>
-          <Text style={styles.reviewsText}>({item.reviews})</Text>
+        <View style={styles.availableBadge}>
+          <MaterialIcons name="check-circle" size={14} color="#16a34a" />
+          <Text style={styles.availableText}>Available</Text>
         </View>
-      </View>
-      <View style={styles.availableBadge}>
-        <MaterialIcons name="check-circle" size={16} color="#16a34a" />
-        <Text style={styles.availableText}>Available</Text>
-      </View>
-    </View>
-
-    <View style={styles.featuresContainer}>
-      {item.features?.map((feature, index) => (
-        <View key={index} style={styles.featureBadge}>
-          <Text style={styles.featureText}>{feature}</Text>
-        </View>
-      ))}
-    </View>
-
-    <View style={styles.courtCardBottom}>
-      <Text style={styles.priceText}>₹{item.pricePerHour}/hour</Text>
-      {isSelected && (
-        <View style={styles.selectedCheckmark}>
-          <MaterialIcons name="check-circle" size={24} color="#8b5cf6" />
-        </View>
-      )}
+      </View>      
+      <Text style={styles.includedText}>Included in Membership</Text>
     </View>
   </TouchableOpacity>
 ));
 
 const CourtSelectionScreen = ({ navigation }) => {
   const [selectedCourt, setSelectedCourt] = useState(null);
-  const [loading, setLoading] = useState(true); // Simulate load for smooth transition
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate fast load (100ms) to allow navigation animation to finish
     const timer = setTimeout(() => setLoading(false), 100);
     return () => clearTimeout(timer);
   }, []);
@@ -83,10 +82,6 @@ const CourtSelectionScreen = ({ navigation }) => {
     }
     navigation.navigate('TeamSelection', { selectedCourt });
   }, [selectedCourt, navigation]);
-
-  const getItemLayout = useCallback((data, index) => ({
-    length: COURT_CARD_HEIGHT, offset: COURT_CARD_HEIGHT * index, index,
-  }), []);
 
   if (loading) {
       return (
@@ -116,10 +111,8 @@ const CourtSelectionScreen = ({ navigation }) => {
             onSelect={handleCourtSelect}
           />
         )}
-        getItemLayout={getItemLayout}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        initialNumToRender={2} 
       />
 
       <View style={styles.footer}>
@@ -148,25 +141,30 @@ const styles = StyleSheet.create({
   backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
   headerSpacer: { width: 40 },
+  
   listContent: { padding: 20, paddingBottom: 100 },
-  courtCard: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 2, borderColor: '#e5e7eb', elevation: 2 },
-  courtCardSelected: { borderColor: '#8b5cf6', backgroundColor: '#f3e8ff' },
-  courtCardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  courtImageContainer: { width: 50, height: 50, borderRadius: 10, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  courtImage: { fontSize: 28 },
-  courtHeaderInfo: { flex: 1 },
-  courtName: { fontSize: 15, fontWeight: 'bold', color: '#1f2937', marginBottom: 4 },
-  ratingContainer: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  ratingText: { fontSize: 13, fontWeight: '600', color: '#1f2937' },
-  reviewsText: { fontSize: 12, color: '#9ca3af' },
-  availableBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#dcfce7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, gap: 4 },
-  availableText: { fontSize: 12, fontWeight: '600', color: '#16a34a' },
-  featuresContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
-  featureBadge: { backgroundColor: '#f3f4f6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  featureText: { fontSize: 11, color: '#6b7280', fontWeight: '500' },
-  courtCardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
-  priceText: { fontSize: 15, fontWeight: 'bold', color: '#8b5cf6' },
-  selectedCheckmark: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  
+  // Updated Court Card Styles
+  courtCard: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 20, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent' },
+  courtCardSelected: { borderColor: '#8b5cf6' },
+  
+  courtImage: { width: '100%', height: 140, backgroundColor: '#e5e7eb' },
+  
+  selectedOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(139, 92, 246, 0.2)', justifyContent: 'center', alignItems: 'center' },
+  checkmarkCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#8b5cf6', justifyContent: 'center', alignItems: 'center', elevation: 5 },
+
+  courtDetails: { padding: 16 },
+  courtHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  courtName: { fontSize: 18, fontWeight: 'bold', color: '#1f2937' },
+  
+  availableBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#dcfce7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 },
+  availableText: { fontSize: 12, fontWeight: 'bold', color: '#16a34a' },
+  
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
+  ratingText: { fontSize: 13, color: '#6b7280', fontWeight: '500' },
+  
+  includedText: { fontSize: 12, color: '#8b5cf6', fontWeight: '600', fontStyle: 'italic' },
+
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e5e7eb' },
   continueButton: { borderRadius: 12, overflow: 'hidden', elevation: 6 },
   continueButtonDisabled: { opacity: 0.7 },

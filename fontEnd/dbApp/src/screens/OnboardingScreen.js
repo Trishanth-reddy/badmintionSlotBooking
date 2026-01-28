@@ -5,49 +5,37 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
+  Image
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
 
+// --- UPDATED DATA BASED ON CHAT HISTORY ---
 const pages = [
   {
-    gradient: ['#6366f1', '#8b5cf6'],
-    icon: '🏸',
+    gradient: ['#6366f1', '#8b5cf6'], // Indigo/Purple
     title: 'Welcome to Georgies',
-    subtitle: 'Book premium badminton courts\nanytime, anywhere',
+    subtitle: 'Premium Synthetic Courts\nin Kumarakom',
     features: [
-      '✓ Multiple court locations',
-      '✓ Flexible time slots',
-      '✓ Instant booking',
+      '✓ 2 Professional Synthetic Courts',
+      '✓ Open Daily: 5:00 AM - 10:00 PM',
+      '✓ Parking, Lockers & Amenities',
     ],
   },
   {
-    gradient: ['#8b5cf6', '#ec4899'],
-    icon: '📅',
-    title: 'Easy Booking',
-    subtitle: 'Select your preferred date,\ntime and court',
+    gradient: ['#ec4899', '#f43f5e'], // Pink/Red (High Energy for Final Slide)
+    title: 'Join the Community',
+    subtitle: 'Affordable memberships\nstarting at ₹500',
     features: [
-      '✓ Real-time availability',
-      '✓ Book for day or week',
-      '✓ 10:00 AM - 10:00 PM',
-    ],
-  },
-  {
-    gradient: ['#ec4899', '#f43f5e'],
-    icon: '💳',
-    title: 'Flexible Plans',
-    subtitle: 'Choose the plan that\nfits your needs',
-    features: [
-      '✓ Monthly subscription',
-      '✓ Quarterly savings',
-      '✓ Yearly best value',
+      '✓ Regular (₹800) & Student (₹500) Plans',
+      '✓ Daily 1-Hour Play Slots',
+      '✓ Instant Booking & Slot Management',
     ],
   },
 ];
 
-// Memoized feature list component
 const FeatureList = React.memo(({ features }) => (
   <View style={styles.featuresContainer}>
     {features.map((feature, index) => (
@@ -58,7 +46,6 @@ const FeatureList = React.memo(({ features }) => (
   </View>
 ));
 
-// Memoized page indicators component
 const PageIndicators = React.memo(({ currentPage, totalPages }) => (
   <View style={styles.indicatorContainer}>
     {Array.from({ length: totalPages }).map((_, index) => (
@@ -79,10 +66,8 @@ const OnboardingScreen = () => {
   const navigation = useNavigation();
   const [currentPage, setCurrentPage] = useState(0);
 
-  // Memoized current page data
   const currentPageData = useMemo(() => pages[currentPage], [currentPage]);
 
-  // Memoized button text
   const buttonText = useMemo(
     () => (currentPage === pages.length - 1 ? 'Get Started' : 'Next'),
     [currentPage]
@@ -111,8 +96,14 @@ const OnboardingScreen = () => {
       </TouchableOpacity>
 
       <View style={styles.contentContainer}>
+        
+        {/* --- LOGO CONTAINER --- */}
         <View style={styles.iconContainer}>
-          <Text style={styles.icon}>{currentPageData.icon}</Text>
+           <Image 
+             source={require('../../assets/logo.jpeg')} 
+             style={styles.logoImage}
+             resizeMode="contain"
+           />
         </View>
 
         <Text style={styles.title}>{currentPageData.title}</Text>
@@ -157,20 +148,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
+  
+  // Icon/Logo Container Styles
   iconContainer: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: '#fff', 
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 40,
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 10,
   },
-  icon: {
-    fontSize: 70,
+  logoImage: {
+    width: 100,
+    height: 100,
   },
+
   title: {
     fontSize: 32,
     fontWeight: 'bold',
@@ -188,7 +186,7 @@ const styles = StyleSheet.create({
   },
   featuresContainer: {
     width: '100%',
-    maxWidth: 300,
+    maxWidth: 320, // Slightly wider to fit the text
   },
   featureRow: {
     paddingVertical: 12,

@@ -2,7 +2,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
-  useMemo,
+  useMemo
 } from 'react';
 import {
   View,
@@ -14,18 +14,19 @@ import {
   Alert,
   Modal,
   Dimensions,
-  ActivityIndicator,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import api from '../../../api/axiosConfig'; // Ensure this path is correct
+import api from '../../../api/axiosConfig'; 
 import { useDebounce } from 'use-debounce';
 import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
+// Tabs Configuration
 const filterTabs = [
-  'today',
+  'today',      
   'Pending',
   'Confirmed',
   'Cancelled',
@@ -41,167 +42,32 @@ const getStatusColor = (status) => {
   }
 };
 
-const BookingManagementScreen = ({ navigation }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('today');
-  const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedBooking, setSelectedBooking] = useState(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [marking, setMarking] = useState(false);
-  const [conflicts, setConflicts] = useState(new Set()); // Store IDs of bookings with conflicts
-
-  const [debouncedSearch] = useDebounce(searchQuery, 500);
-
-  // --- 1. CONFLICT DETECTION LOGIC ---
-  // Scans loaded bookings to see if any player is in multiple active matches on same day
-  const detectConflicts = (data) => {
-    const playerMap = {}; // "Date_PlayerID" -> [BookingID, BookingID]
-    const conflictSet = new Set();
-
-    data.forEach(booking => {
-      if (booking.bookingStatus === 'Cancelled') return;
-
-      const dateKey = new Date(booking.date).toISOString().split('T')[0];
-      
-      // Collect all participants (Captain + Team)
-      const participants = [
-        booking.user?._id, 
-        ...(booking.teamMembers?.map(m => m.userId?._id) || [])
-      ].filter(Boolean); // Remove nulls
-
-      participants.forEach(playerId => {
-        const key = `${dateKey}_${playerId}`;
-        if (!playerMap[key]) playerMap[key] = [];
-        playerMap[key].push(booking._id);
-      });
-    });
-
-    // Identify bookings with shared players
-    Object.values(playerMap).forEach(bookingIds => {
-      if (bookingIds.length > 1) {
-        bookingIds.forEach(id => conflictSet.add(id));
-      }
-    });
-
-    setConflicts(conflictSet);
-  };
-
-  const loadBookings = useCallback(async () => {
-    try {
-      setLoading(true);
-      const params = {};
-
-      if (filterStatus === 'today') params.status = 'Pending'; // Default view
-      if (['Pending', 'Confirmed', 'Cancelled'].includes(filterStatus)) params.status = filterStatus;
-      if (debouncedSearch) params.search = debouncedSearch;
-
-      // Use the ADMIN endpoint we created
-      const response = await api.get('/bookings/admin/all', { params });
-      
-      let fetchedData = response.data?.data || [];
-
-      // Client-side 'Today' filter (if API returns all)
-      if (filterStatus === 'today') {
-        const todayStr = new Date().toISOString().split('T')[0];
-        fetchedData = fetchedData.filter(b => b.date.startsWith(todayStr));
-      }
-
-      // Sort: Latest first
-      fetchedData.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-      // Run Conflict Detection on the fresh data
-      detectConflicts(fetchedData);
-      setBookings(fetchedData);
-
-    } catch (error) {
-      Alert.alert('Error', 'Failed to load bookings');
-    } finally {
-      setLoading(false);
-    }
-  }, [filterStatus, debouncedSearch]);
-
-  useFocusEffect(useCallback(() => { loadBookings(); }, [loadBookings]));
-
-  // --- 2. UPDATED CANCEL (OVERRIDE) LOGIC ---
-  const handleCancelBooking = useCallback(async (booking) => {
-    Alert.alert(
-      'Admin Override',
-      `Force cancel booking ${booking.bookingId}?`,
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Using PUT as per your Controller logic
-              await api.put(`/bookings/${booking._id}/cancel`, { 
-                adminNote: 'Cancelled by Admin Override' 
-              });
-              Alert.alert('Success', 'Booking cancelled via Override.');
-              loadBookings();
-              setShowDetailModal(false);
-            } catch (error) {
-              Alert.alert('Error', error.response?.data?.message || 'Failed to cancel');
-            }
-          },
-        },
-      ]
-    );
-  }, [loadBookings]);
-
-  const handleMarkAllPaid = useCallback(async (booking) => {
-    try {
-      setMarking(true);
-      // Assuming you have a route for marking paid or simple update
-      await api.put(`/bookings/${booking._id}/pay`); 
-      Alert.alert('Success', 'Marked as Paid');
-      loadBookings();
-      setShowDetailModal(false);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update payment');
-    } finally {
-      setMarking(false);
-    }
-  }, [loadBookings]);
-
-  // --- RENDERERS ---
-
-  const renderBookingCard = useCallback(({ item }) => {
+const BookingCard = React.memo(({ item, onPress }) => {
     const statusColor = getStatusColor(item.bookingStatus);
-    const hasConflict = conflicts.has(item._id); // Check conflict set
-
     return (
       <TouchableOpacity
-        style={[styles.bookingCard, hasConflict && styles.conflictCard]}
-        onPress={() => { setSelectedBooking(item); setShowDetailModal(true); }}
+        style={styles.bookingCard}
+        onPress={() => onPress(item)}
+        activeOpacity={0.7}
       >
         <View style={styles.bookingCardLeft}>
-          <View style={[styles.iconBox, hasConflict && { backgroundColor: '#fee2e2' }]}>
-            {hasConflict ? (
-              <MaterialIcons name="warning" size={24} color="#dc2626" />
-            ) : (
+          <View style={styles.iconBox}>
               <MaterialIcons name="sports-tennis" size={24} color="#fff" />
-            )}
           </View>
         </View>
 
         <View style={styles.bookingCardMiddle}>
           <View style={styles.bookingHeader}>
-            <Text style={styles.bookingUser}>{item.user?.fullName || 'Unknown User'}</Text>
-            {/* Show Bulk Grouping via ID */}
+            <Text style={styles.bookingUser} numberOfLines={1}>{item.user?.fullName || 'Unknown User'}</Text>
             <Text style={styles.bookingId}>{item.bookingId}</Text>
           </View>
           
           <View style={styles.detailRow}>
             <MaterialIcons name="event" size={14} color="#8b5cf6" />
-            <Text style={styles.detailText}>{new Date(item.date).toLocaleDateString()} • {item.startTime}</Text>
+            <Text style={styles.detailText}>
+                {new Date(item.date).toLocaleDateString('en-GB')} • {item.startTime}
+            </Text>
           </View>
-
-          {hasConflict && (
-            <Text style={styles.conflictText}>⚠️ Player Overlap Detected</Text>
-          )}
         </View>
 
         <View style={styles.bookingCardRight}>
@@ -212,7 +78,100 @@ const BookingManagementScreen = ({ navigation }) => {
         </View>
       </TouchableOpacity>
     );
-  }, [conflicts]);
+});
+
+const BookingManagementScreen = ({ navigation }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('today'); 
+  
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const [debouncedSearch] = useDebounce(searchQuery, 500);
+
+  const loadBookings = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = {};
+
+      if (filterStatus !== 'today' && filterStatus !== 'all (history)') {
+         params.status = filterStatus;
+      }
+      
+      if (debouncedSearch) params.search = debouncedSearch;
+
+      const response = await api.get('/bookings/admin/all', { params });
+      let fetchedData = response.data?.data || [];
+
+      // Client-side Filter for 'Today'
+      if (filterStatus === 'today') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        fetchedData = fetchedData.filter(b => b.date.startsWith(todayStr));
+      }
+
+      // Sort: Latest first
+      fetchedData.sort((a, b) => new Date(b.date) - new Date(a.date));
+      setBookings(fetchedData);
+
+    } catch (error) {
+      console.error(error);
+      // Silent fail or toast
+    } finally {
+      setLoading(false);
+    }
+  }, [filterStatus, debouncedSearch]);
+
+  useFocusEffect(useCallback(() => { loadBookings(); }, [loadBookings]));
+
+  const handleCancelBooking = useCallback(async (booking) => {
+    Alert.alert(
+      'Force Cancel',
+      `Cancel booking ${booking.bookingId}? This will notify the user.`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Cancel Booking',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              await api.put(`/bookings/${booking._id}/cancel`, { 
+                adminNote: 'Cancelled by Admin Override' 
+              });
+              Alert.alert('Success', 'Booking cancelled.');
+              loadBookings();
+              setShowDetailModal(false);
+            } catch (error) {
+              Alert.alert('Error', error.response?.data?.message || 'Failed to cancel');
+            } finally {
+                setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [loadBookings]);
+
+  const handleMarkAllPaid = useCallback(async (booking) => {
+    try {
+      setActionLoading(true);
+      await api.put(`/bookings/${booking._id}/pay`); 
+      Alert.alert('Success', 'Marked as Paid');
+      loadBookings();
+      setShowDetailModal(false);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update payment');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [loadBookings]);
+
+  const renderBookingCard = useCallback(({ item }) => (
+      <BookingCard item={item} onPress={(b) => { setSelectedBooking(b); setShowDetailModal(true); }} />
+  ), []);
 
   return (
     <View style={styles.container}>
@@ -220,33 +179,39 @@ const BookingManagementScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <MaterialIcons name="arrow-back" size={28} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Admin Console</Text>
+        <Text style={styles.headerTitle}>Booking Management</Text>
         <View style={{ width: 40 }} />
       </LinearGradient>
 
-      {/* Filter & Search UI (Same as before) */}
       <View style={styles.searchContainer}>
-        <MaterialIcons name="search" size={24} color="#8b5cf6" />
+        <MaterialIcons name="search" size={22} color="#94a3b8" />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search Captain, Player, or ID..."
+          placeholder="Search ID, Name..."
           value={searchQuery}
           onChangeText={setSearchQuery}
+          placeholderTextColor="#94a3b8"
         />
       </View>
 
-      <View style={styles.filterContainer}>
-        {filterTabs.map((status) => (
-          <TouchableOpacity
-            key={status}
-            style={[styles.filterTab, filterStatus === status && styles.filterTabActive]}
-            onPress={() => setFilterStatus(status)}
-          >
-            <Text style={[styles.filterText, filterStatus === status && styles.filterTextActive]}>
-              {status.toUpperCase()}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.filterWrapper}>
+        <FlatList 
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            data={filterTabs}
+            keyExtractor={item => item}
+            contentContainerStyle={styles.filterContainer}
+            renderItem={({ item }) => (
+                <TouchableOpacity
+                    style={[styles.filterTab, filterStatus === item && styles.filterTabActive]}
+                    onPress={() => setFilterStatus(item)}
+                >
+                    <Text style={[styles.filterText, filterStatus === item && styles.filterTextActive]}>
+                    {item.toUpperCase()}
+                    </Text>
+                </TouchableOpacity>
+            )}
+        />
       </View>
 
       <FlatList
@@ -256,81 +221,98 @@ const BookingManagementScreen = ({ navigation }) => {
         onRefresh={loadBookings}
         refreshing={loading}
         contentContainerStyle={styles.listContent}
+        initialNumToRender={8}
+        windowSize={5}
         ListEmptyComponent={
           !loading && (
             <View style={styles.emptyState}>
-              <MaterialIcons name="check-circle" size={48} color="#d1d5db" />
-              <Text style={styles.emptyText}>All caught up!</Text>
+              <MaterialIcons name="event-busy" size={48} color="#cbd5e1" />
+              <Text style={styles.emptyText}>No bookings found</Text>
             </View>
           )
         }
       />
 
-      {/* --- 3. UPDATED MODAL: DATA MAPPING --- */}
-      <Modal visible={showDetailModal} transparent animationType="slide">
+      {/* --- DETAIL MODAL --- */}
+      <Modal visible={showDetailModal} transparent animationType="fade" onRequestClose={() => setShowDetailModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             {selectedBooking && (
               <>
+                <View style={styles.modalDragHandle} />
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Match Details</Text>
-                  <TouchableOpacity onPress={() => setShowDetailModal(false)}>
-                    <MaterialIcons name="close" size={24} color="#333" />
+                  <TouchableOpacity onPress={() => setShowDetailModal(false)} style={styles.closeBtn}>
+                    <MaterialIcons name="close" size={22} color="#475569" />
                   </TouchableOpacity>
                 </View>
 
-                {/* RELATIONSHIP VIEW: Full Roster */}
-                <View style={styles.teamCard}>
-                  <Text style={styles.cardTitle}>Roster & Payment</Text>
-                  
-                  {/* Captain */}
-                  <View style={styles.memberRow}>
-                     <View>
-                        <Text style={styles.memberName}>{selectedBooking.user?.fullName} (Captain)</Text>
-                        <Text style={styles.memberPhone}>{selectedBooking.user?.phone}</Text>
-                     </View>
-                     <View style={[styles.paymentBadge, styles.paymentPaid]}>
-                        <Text style={styles.paymentBadgeText}>Host</Text>
-                     </View>
-                  </View>
+                <View style={styles.detailBody}>
+                    <View style={styles.infoBlock}>
+                        <Text style={styles.infoLabel}>Booking ID</Text>
+                        <Text style={styles.infoValue}>{selectedBooking.bookingId}</Text>
+                    </View>
+                    
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoBlock}>
+                            <Text style={styles.infoLabel}>Date</Text>
+                            <Text style={styles.infoValue}>{new Date(selectedBooking.date).toLocaleDateString('en-GB')}</Text>
+                        </View>
+                        <View style={styles.infoBlock}>
+                            <Text style={styles.infoLabel}>Time</Text>
+                            <Text style={styles.infoValue}>{selectedBooking.startTime}</Text>
+                        </View>
+                    </View>
 
-                  {/* Team Members (Populated from Backend) */}
-                  {selectedBooking.teamMembers?.map((member, idx) => (
+                    <View style={styles.divider} />
+
+                    <Text style={styles.sectionHeader}>Players & Payment</Text>
+                    
+                    {/* Captain */}
+                    <View style={styles.memberRow}>
+                        <View>
+                            <Text style={styles.memberName}>{selectedBooking.user?.fullName} (Captain)</Text>
+                            <Text style={styles.memberPhone}>{selectedBooking.user?.phone || 'No phone'}</Text>
+                        </View>
+                        <View style={[styles.paymentBadge, styles.paymentPaid]}>
+                            <Text style={styles.paymentBadgeText}>Paid</Text>
+                        </View>
+                    </View>
+
+                    {/* Team Members */}
+                    {selectedBooking.teamMembers?.map((member, idx) => (
                     <View key={idx} style={styles.memberRow}>
-                      <View>
-                        {/* Fix: Access userId.fullName, fallback to 'Unknown' */}
+                        <View>
                         <Text style={styles.memberName}>
-                          {member.userId?.fullName || 'Guest Player'}
+                            {member.userId?.fullName || 'Guest Player'}
                         </Text>
                         <Text style={styles.memberPhone}>
-                          {member.userId?.phone || 'No phone'}
+                            {member.userId?.phone || 'No phone'}
                         </Text>
-                      </View>
-                      <View style={[
+                        </View>
+                        <View style={[
                         styles.paymentBadge, 
                         member.paymentStatus === 'Paid' ? styles.paymentPaid : styles.paymentPending
-                      ]}>
+                        ]}>
                         <Text style={styles.paymentBadgeText}>{member.paymentStatus}</Text>
-                      </View>
+                        </View>
                     </View>
-                  ))}
+                    ))}
                 </View>
 
-                {/* OVERRIDE ACTIONS */}
+                {/* ACTION BUTTONS */}
                 <View style={styles.actionContainer}>
                     {selectedBooking.bookingStatus === 'Pending' && (
-                        <TouchableOpacity style={styles.actionButton} onPress={() => handleMarkAllPaid(selectedBooking)}>
+                        <TouchableOpacity style={styles.actionButton} onPress={() => handleMarkAllPaid(selectedBooking)} disabled={actionLoading}>
                             <LinearGradient colors={['#16a34a', '#15803d']} style={styles.actionButtonGradient}>
-                                <Text style={styles.actionButtonText}>Mark Paid & Approve</Text>
+                                {actionLoading ? <ActivityIndicator color="#fff"/> : <Text style={styles.actionButtonText}>Mark Paid & Approve</Text>}
                             </LinearGradient>
                         </TouchableOpacity>
                     )}
                     
                     {selectedBooking.bookingStatus !== 'Cancelled' && (
-                        <TouchableOpacity style={styles.actionButton} onPress={() => handleCancelBooking(selectedBooking)}>
-                            <LinearGradient colors={['#dc2626', '#b91c1c']} style={styles.actionButtonGradient}>
-                                <Text style={styles.actionButtonText}>Admin Override (Cancel)</Text>
-                            </LinearGradient>
+                        <TouchableOpacity style={styles.cancelButton} onPress={() => handleCancelBooking(selectedBooking)} disabled={actionLoading}>
+                             {actionLoading ? <ActivityIndicator color="#ef4444"/> : <Text style={styles.cancelButtonText}>Cancel Booking</Text>}
                         </TouchableOpacity>
                     )}
                 </View>
@@ -346,53 +328,71 @@ const BookingManagementScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8f9fa' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20 },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255, 255, 255, 0.2)', justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginLeft: 15, flex: 1 },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', margin: 20, paddingHorizontal: 15, borderRadius: 12, borderWidth: 1, borderColor: '#e5e7eb' },
-  searchInput: { flex: 1, paddingVertical: 12, marginLeft: 8 },
-  filterContainer: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 12, gap: 8, flexWrap: 'wrap' },
-  filterTab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e5e7eb' },
-  filterTabActive: { backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' },
-  filterText: { fontSize: 12, color: '#6b7280' },
-  filterTextActive: { color: '#fff' },
-  listContent: { paddingHorizontal: 20, paddingBottom: 20, gap: 10 },
   
-  // Card Styles
-  bookingCard: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 15, padding: 12, elevation: 2 },
-  conflictCard: { borderWidth: 1, borderColor: '#fca5a5', backgroundColor: '#fff1f2' }, // Red tint for conflict
-  bookingCardLeft: { marginRight: 10 },
-  iconBox: { width: 45, height: 45, borderRadius: 10, backgroundColor: '#8b5cf6', justifyContent: 'center', alignItems: 'center' },
-  bookingCardMiddle: { flex: 1 },
-  bookingHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  bookingUser: { fontSize: 14, fontWeight: 'bold', color: '#1f2937' },
-  bookingId: { fontSize: 11, color: '#9ca3af' },
-  detailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 3, gap: 4 },
-  detailText: { fontSize: 12, color: '#6b7280' },
-  conflictText: { fontSize: 11, color: '#dc2626', fontWeight: 'bold', marginTop: 4 },
-  bookingCardRight: { alignItems: 'flex-end', marginLeft: 8 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', marginHorizontal: 20, marginTop: 15, marginBottom: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', height: 48 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 15, color: '#1e293b' },
+  
+  filterWrapper: { height: 50 },
+  filterContainer: { paddingHorizontal: 20, gap: 8, alignItems: 'center' },
+  filterTab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: 'transparent' },
+  filterTabActive: { backgroundColor: '#1e293b', borderColor: '#1e293b' },
+  filterText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
+  filterTextActive: { color: '#fff' },
+  
+  listContent: { paddingHorizontal: 20, paddingBottom: 20, paddingTop: 10, gap: 12 },
+  
+  // Card Styles Optimized
+  bookingCard: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 16, padding: 12, shadowColor: '#000', shadowOpacity: 0.04, elevation: 2, borderWidth: 1, borderColor: '#f8fafc' },
+  bookingCardLeft: { marginRight: 12 },
+  iconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#8b5cf6', justifyContent: 'center', alignItems: 'center' },
+  bookingCardMiddle: { flex: 1, justifyContent: 'center' },
+  bookingHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  bookingUser: { fontSize: 15, fontWeight: 'bold', color: '#1e293b', maxWidth: '70%' },
+  bookingId: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  detailText: { fontSize: 12, color: '#64748b', fontWeight: '500' },
+  
+  bookingCardRight: { alignItems: 'flex-end', marginLeft: 8, justifyContent: 'space-between' },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 4 },
-  statusText: { fontSize: 11, fontWeight: '600' },
+  statusText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   bookingPrice: { fontSize: 14, fontWeight: 'bold', color: '#8b5cf6' },
 
-  // Modal Styles
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 25, borderTopRightRadius: 25, paddingBottom: 30, maxHeight: '80%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderColor: '#e5e7eb' },
-  modalTitle: { fontSize: 18, fontWeight: 'bold' },
-  teamCard: { backgroundColor: '#f9fafb', margin: 20, borderRadius: 12, padding: 16 },
-  cardTitle: { fontSize: 14, fontWeight: 'bold', marginBottom: 12 },
-  memberRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderColor: '#e5e7eb' },
-  memberName: { fontSize: 14, fontWeight: '600' },
-  memberPhone: { fontSize: 12, color: '#9ca3af' },
-  paymentBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8 },
+  // Modal Optimized
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingBottom: 30, maxHeight: '80%' },
+  modalDragHandle: { width: 40, height: 4, backgroundColor: '#cbd5e1', borderRadius: 2, alignSelf: 'center', marginTop: 12 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 20, paddingBottom: 15 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b' },
+  closeBtn: { padding: 4, backgroundColor: '#f1f5f9', borderRadius: 20 },
+  
+  detailBody: { marginBottom: 20 },
+  infoRow: { flexDirection: 'row', gap: 20, marginTop: 12 },
+  infoBlock: { marginBottom: 8 },
+  infoLabel: { fontSize: 12, color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' },
+  infoValue: { fontSize: 16, color: '#1e293b', fontWeight: '600', marginTop: 2 },
+  
+  divider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 16 },
+  sectionHeader: { fontSize: 14, fontWeight: '700', color: '#1e293b', marginBottom: 12 },
+  
+  memberRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderColor: '#f8fafc' },
+  memberName: { fontSize: 14, fontWeight: '600', color: '#334155' },
+  memberPhone: { fontSize: 12, color: '#94a3b8' },
+  paymentBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, alignSelf: 'center' },
   paymentPaid: { backgroundColor: '#dcfce7' },
   paymentPending: { backgroundColor: '#fef08a' },
-  paymentBadgeText: { fontSize: 11, fontWeight: '600' },
-  actionContainer: { marginHorizontal: 20, gap: 10 },
-  actionButton: { borderRadius: 12, overflow: 'hidden' },
-  actionButtonGradient: { paddingVertical: 14, alignItems: 'center' },
-  actionButtonText: { color: '#fff', fontWeight: 'bold' },
-  emptyState: { alignItems: 'center', paddingVertical: 40 },
-  emptyText: { color: '#9ca3af', marginTop: 10 }
+  paymentBadgeText: { fontSize: 11, fontWeight: '600', color: '#15803d' },
+  
+  actionContainer: { gap: 12 },
+  actionButton: { borderRadius: 12, overflow: 'hidden', height: 50 },
+  actionButtonGradient: { paddingVertical: 14, alignItems: 'center', flex: 1, justifyContent: 'center' },
+  actionButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  cancelButton: { alignItems: 'center', paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#ef4444', backgroundColor: '#fff' },
+  cancelButtonText: { color: '#ef4444', fontWeight: 'bold', fontSize: 15 },
+  
+  emptyState: { alignItems: 'center', paddingVertical: 60 },
+  emptyText: { color: '#94a3b8', marginTop: 12, fontSize: 15 }
 });
 
 export default BookingManagementScreen;

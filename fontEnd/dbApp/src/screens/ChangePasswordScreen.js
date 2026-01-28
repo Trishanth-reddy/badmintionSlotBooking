@@ -22,9 +22,9 @@ const RequirementItem = React.memo(({ isValid, text }) => (
     <MaterialIcons
       name={isValid ? 'check-circle' : 'circle'}
       size={16}
-      color={isValid ? '#16a34a' : '#d1d5db'}
+      color={isValid ? '#16a34a' : '#cbd5e1'}
     />
-    <Text style={styles.requirementText}>{text}</Text>
+    <Text style={[styles.requirementText, isValid && styles.requirementTextValid]}>{text}</Text>
   </View>
 ));
 
@@ -42,11 +42,11 @@ const PasswordInput = React.memo(({
   <View style={styles.inputGroup}>
     <Text style={styles.label}>{label}</Text>
     <View style={styles.inputContainer}>
-      <MaterialIcons name={icon} size={20} color="#8b5cf6" style={styles.inputIcon} />
+      <MaterialIcons name={icon} size={20} color="#94a3b8" style={styles.inputIcon} />
       <TextInput
         style={styles.input}
         placeholder={placeholder}
-        placeholderTextColor="#999"
+        placeholderTextColor="#94a3b8"
         secureTextEntry={!showPassword}
         value={value}
         onChangeText={onChangeText}
@@ -54,11 +54,11 @@ const PasswordInput = React.memo(({
         autoCapitalize="none"
         autoCorrect={false}
       />
-      <TouchableOpacity onPress={onToggleShow} activeOpacity={0.7}>
+      <TouchableOpacity onPress={onToggleShow} activeOpacity={0.7} style={styles.eyeIcon}>
         <MaterialIcons
           name={showPassword ? 'visibility' : 'visibility-off'}
           size={20}
-          color="#999"
+          color="#94a3b8"
         />
       </TouchableOpacity>
     </View>
@@ -68,15 +68,13 @@ const PasswordInput = React.memo(({
 // Memoized security tips section
 const SecurityTips = React.memo(() => (
   <View style={styles.tipsSection}>
-    <Text style={styles.tipsTitle}>Security Tips:</Text>
-    <Text style={styles.tip}>
-      • Use a mix of uppercase, lowercase, numbers, and symbols
-    </Text>
-    <Text style={styles.tip}>• Never share your password with anyone</Text>
-    <Text style={styles.tip}>• Change your password regularly</Text>
-    <Text style={styles.tip}>
-      • Don't use personal information in your password
-    </Text>
+    <View style={styles.tipsHeader}>
+       <MaterialIcons name="lightbulb" size={18} color="#b45309" />
+       <Text style={styles.tipsTitle}>Security Tips</Text>
+    </View>
+    <Text style={styles.tip}>• Use a mix of uppercase, lowercase, numbers, and symbols.</Text>
+    <Text style={styles.tip}>• Never share your password with anyone.</Text>
+    <Text style={styles.tip}>• Avoid using personal information like birthdays.</Text>
   </View>
 ));
 
@@ -181,12 +179,12 @@ const ChangePasswordScreen = ({ navigation }) => {
         removeClippedSubviews={false}
       >
         <View style={styles.infoSection}>
-          <View style={styles.infoIcon}>
-            <MaterialIcons name="security" size={40} color="#8b5cf6" />
+          <View style={styles.infoIconBox}>
+            <MaterialIcons name="lock-reset" size={32} color="#8b5cf6" />
           </View>
-          <Text style={styles.infoTitle}>Update Your Password</Text>
+          <Text style={styles.infoTitle}>Update Password</Text>
           <Text style={styles.infoText}>
-            Keep your account secure by using a strong, unique password
+            Ensure your account stays secure with a strong password.
           </Text>
         </View>
 
@@ -206,7 +204,7 @@ const ChangePasswordScreen = ({ navigation }) => {
             label="New Password"
             value={newPassword}
             onChangeText={setNewPassword}
-            placeholder="Enter new password (min. 8 characters)"
+            placeholder="Enter new password (min. 8 chars)"
             showPassword={showNewPassword}
             onToggleShow={toggleShowNewPassword}
             disabled={loading}
@@ -217,15 +215,15 @@ const ChangePasswordScreen = ({ navigation }) => {
             label="Confirm New Password"
             value={confirmPassword}
             onChangeText={setConfirmPassword}
-            placeholder="Confirm new password"
+            placeholder="Re-enter new password"
             showPassword={showConfirmPassword}
             onToggleShow={toggleShowConfirmPassword}
             disabled={loading}
-            icon="lock"
+            icon="lock-clock"
           />
 
           <View style={styles.requirementsBox}>
-            <Text style={styles.requirementsTitle}>Password Requirements:</Text>
+            <Text style={styles.requirementsTitle}>Password Strength:</Text>
             <RequirementItem 
               isValid={validations.lengthValid} 
               text="At least 8 characters" 
@@ -262,16 +260,16 @@ const ChangePasswordScreen = ({ navigation }) => {
         >
           <LinearGradient
             colors={['#8b5cf6', '#ec4899']}
+            start={{x:0, y:0}} end={{x:1, y:0}}
             style={styles.confirmButtonGradient}
           >
             {loading ? (
               <View style={styles.buttonContent}>
                 <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.confirmButtonText}>Saving...</Text>
               </View>
             ) : (
               <View style={styles.buttonContent}>
-                <Text style={styles.confirmButtonText}>Save Password</Text>
+                <Text style={styles.confirmButtonText}>Update Password</Text>
                 <MaterialIcons name="check" size={20} color="#fff" />
               </View>
             )}
@@ -283,10 +281,7 @@ const ChangePasswordScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -303,43 +298,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  headerSpacer: {
-    width: 40,
-  },
-  scrollContent: {
-    paddingBottom: 100,
-  },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  headerSpacer: { width: 40 },
+  
+  scrollContent: { paddingBottom: 100 },
+  
   infoSection: {
     paddingHorizontal: 20,
     paddingTop: 30,
     paddingBottom: 20,
     alignItems: 'center',
   },
-  infoIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#f3e8ff',
+  infoIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  infoTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#9ca3af',
-    textAlign: 'center',
-  },
+  infoTitle: { fontSize: 20, fontWeight: 'bold', color: '#1f2937', marginBottom: 6 },
+  infoText: { fontSize: 14, color: '#6b7280', textAlign: 'center', paddingHorizontal: 20 },
+  
   formCard: {
     marginHorizontal: 20,
     backgroundColor: '#fff',
@@ -347,83 +333,53 @@ const styles = StyleSheet.create({
     padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 3,
     marginBottom: 20,
   },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
+  inputGroup: { marginBottom: 16 },
+  label: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8 },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f8fafc',
     borderRadius: 12,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: '#e2e8f0',
+    height: 50,
   },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    paddingVertical: 14,
-    fontSize: 15,
-    color: '#1f2937',
-  },
+  inputIcon: { marginRight: 10 },
+  input: { flex: 1, fontSize: 15, color: '#1f2937' },
+  eyeIcon: { padding: 8 },
+  
   requirementsBox: {
-    backgroundColor: '#f0f9ff',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: '#0284c7',
+    marginTop: 10,
+    backgroundColor: '#f8fafc',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
   },
-  requirementsTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1e3a8a',
-    marginBottom: 8,
-  },
-  requirementItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 8,
-  },
-  requirementText: {
-    fontSize: 12,
-    color: '#1e3a8a',
-  },
+  requirementsTitle: { fontSize: 12, fontWeight: '600', color: '#64748b', marginBottom: 10, textTransform: 'uppercase' },
+  requirementItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 },
+  requirementText: { fontSize: 13, color: '#94a3b8' },
+  requirementTextValid: { color: '#15803d', fontWeight: '500' },
+  
   tipsSection: {
     marginHorizontal: 20,
     marginBottom: 20,
-    backgroundColor: 'rgba(254, 240, 138, 0.3)',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    backgroundColor: '#fffbeb',
+    padding: 16,
     borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#ca8a04',
+    borderWidth: 1,
+    borderColor: '#fef3c7',
   },
-  tipsTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#713f12',
-    marginBottom: 8,
-  },
-  tip: {
-    fontSize: 12,
-    color: '#713f12',
-    marginBottom: 4,
-  },
+  tipsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  tipsTitle: { fontSize: 13, fontWeight: '700', color: '#b45309' },
+  tip: { fontSize: 13, color: '#92400e', marginBottom: 4, lineHeight: 20 },
+  
   footer: {
     position: 'absolute',
     bottom: 0,
@@ -435,44 +391,31 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    borderTopColor: '#f1f5f9',
+    elevation: 10
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#f1f5f9',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center'
   },
-  cancelButtonText: {
-    color: '#1f2937',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  cancelButtonText: { color: '#475569', fontSize: 15, fontWeight: '600' },
   confirmButton: {
-    flex: 1.5,
+    flex: 2,
     borderRadius: 12,
     overflow: 'hidden',
+    elevation: 4,
     shadowColor: '#8b5cf6',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 6,
   },
-  confirmButtonGradient: {
-    paddingVertical: 14,
-  },
-  buttonContent: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  confirmButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
+  confirmButtonGradient: { paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  buttonContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  confirmButtonText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
 });
 
 export default ChangePasswordScreen;

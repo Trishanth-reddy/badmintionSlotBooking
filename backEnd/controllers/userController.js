@@ -226,73 +226,7 @@ exports.savePushToken = asyncHandler(async (req, res) => {
   }
 });
 
-// --- ADMIN FUNCTIONS ---
 
-// @desc    Get all users (Admin only)
-// @route   GET /api/users/admin/all
-// @access  Private/Admin
-exports.getAllUsers = asyncHandler(async (req, res) => {
-  const { search, status, page = 1, limit = 20 } = req.query; // Pagination added
-
-  let query = {};
-
-  if (search && search.length > 1) {
-    query.$or = [
-      { fullName: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-      { phone: { $regex: search, $options: 'i' } },
-    ];
-  }
-
-  if (status && status !== 'all') {
-    const statusQuery = status === 'active' ? 'Active' : { $ne: 'Active' };
-    query['membership.status'] = statusQuery;
-  }
-
-  const users = await User.find(query)
-    .sort({ fullName: 1 })
-    .skip((page - 1) * limit)
-    .limit(parseInt(limit))
-    .lean();
-
-  const now = new Date();
-  const enrichedUsers = users.map(u => {
-    const membership = u.membership || {};
-    let daysLeft = 0;
-    if (membership.expiryDate) {
-      daysLeft = Math.max(0, Math.ceil((new Date(membership.expiryDate) - now) / (86400000)));
-    }
-    return { ...u, membership: { ...membership, daysLeft } };
-  });
-
-  const totalUsers = await User.countDocuments();
-  const activeUsers = await User.countDocuments({ 'membership.status': 'Active' });
-
-  res.status(200).json({
-    success: true,
-    count: enrichedUsers.length,
-    data: enrichedUsers,
-    stats: { total: totalUsers, active: activeUsers, inactive: totalUsers - activeUsers },
-  });
-});
-
-// @desc    Delete user (Admin only)
-// @route   DELETE /api/users/admin/:id
-// @access  Private/Admin
-exports.deleteUser = asyncHandler(async (req, res) => {
-  const user = await User.findByIdAndDelete(req.params.id);
-  if (!user) {
-    return res.status(404).json({ message: 'User not found' });
-  }
-  
-  // NOTE: In a real production app, you might want to 'Soft Delete' (mark as deleted) 
-  // or cascade delete their bookings/subscriptions here.
-  
-  res.status(200).json({
-    success: true,
-    message: 'User deleted successfully',
-  });
-});
 
 // @desc    Search ALL users (for Team Selection)
 // @route   GET /api/users/search

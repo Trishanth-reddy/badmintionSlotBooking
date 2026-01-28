@@ -8,8 +8,6 @@ const {
     searchUsers, // <--- NOTE: You must add this function to your controller (code below)
     uploadProfilePicture,
     savePushToken,
-    getAllUsers, 
-    deleteUser 
 } = require('../controllers/userController');
 const { protect, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload'); // Ensure you have this middleware (or define multer here)
@@ -29,8 +27,6 @@ router.get('/search', protect, searchUsers); // Required for Team Selection Scre
 router.post('/profile-picture', protect, upload.single('profilePicture'), uploadProfilePicture);
 router.post('/save-push-token', protect, savePushToken);
 
-// --- Admin Routes ---
-router.get('/admin/all', protect, authorize('admin'), getAllUsers);
-router.delete('/admin/:id', protect, authorize('admin'), deleteUser);
+
 
 module.exports = router;

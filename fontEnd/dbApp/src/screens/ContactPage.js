@@ -1,315 +1,153 @@
-import React, { useCallback, useMemo } from 'react';
+import React from 'react';
 import {
   View,
   Text,
+  StyleSheet,
   TouchableOpacity,
   ScrollView,
-  StyleSheet,
   Linking,
-  Alert,
-  Dimensions,
+  Platform,
+  ImageBackground
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
+import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
 
-const { width } = Dimensions.get('window');
+const ContactScreen = ({ navigation }) => {
+  
+  // --- CONFIGURATION ---
+  const FACILITY_PHONE = '+919876543200'; 
+  const FACILITY_EMAIL = 'admin@courtbook.com';
+  const FACILITY_ADDRESS = 'Kumarakom, Kerala 686563'; 
+  
+  const LATITUDE = 9.598472;
+  const LONGITUDE = 76.433219;
+  const LABEL = 'Badminton Court';
 
-const contactInfo = [
-  {
-    id: 1,
-    icon: 'phone',
-    title: 'Phone',
-    value: '+91 98765 43210',
-    color: '#8b5cf6',
-    action: 'phone',
-  },
-  {
-    id: 2,
-    icon: 'email',
-    title: 'Email',
-    value: 'support@Georgies.com',
-    color: '#ec4899',
-    action: 'email',
-  },
-  {
-    id: 3,
-    icon: 'location-on',
-    title: 'Address',
-    value: 'Hyderabad Sports Complex\nHyderabad, Telangana 500001',
-    color: '#f43f5e',
-    action: 'location',
-  },
-  {
-    id: 4,
-    icon: 'access-time',
-    title: 'Operating Hours',
-    value: '6:00 AM - 10:00 PM Daily',
-    color: '#06b6d4',
-    action: null,
-  },
-];
+  const WHATSAPP_MSG = 'Hi, I have a query regarding badminton court booking.';
 
-const socialLinks = [
-  {
-    id: 1,
-    icon: 'facebook',
-    name: 'Facebook',
-    url: 'https://facebook.com/courtbookapp',
-    color: '#4267B2',
-    emoji: '📘',
-  },
-  {
-    id: 2,
-    icon: 'instagram',
-    name: 'Instagram',
-    url: 'https://instagram.com/courtbookapp',
-    color: '#E1306C',
-    emoji: '📷',
-  },
-  {
-    id: 3,
-    icon: 'twitter',
-    name: 'Twitter',
-    url: 'https://twitter.com/courtbookapp',
-    color: '#1DA1F2',
-    emoji: '𝕏',
-  },
-  {
-    id: 4,
-    icon: 'language',
-    name: 'Website',
-    url: 'https://www.courtbook.com',
-    color: '#8b5cf6',
-    emoji: '🌐',
-  },
-];
+  // --- ACTIONS ---
+  const handleCall = () => {
+    Linking.openURL(`tel:${FACILITY_PHONE}`);
+  };
 
-const faqData = [
-  {
-    id: 1,
-    question: 'What are your operating hours?',
-    answer: "We're open 6:00 AM - 10:00 PM daily",
-  },
-  {
-    id: 2,
-    question: 'Can I cancel my booking?',
-    answer: 'Yes, free cancellation up to 2 hours before',
-  },
-  {
-    id: 3,
-    question: 'How do I make a payment?',
-    answer: 'We accept bank transfers and online payments',
-  },
-];
+  const handleWhatsApp = () => {
+    let url = `whatsapp://send?text=${WHATSAPP_MSG}&phone=${FACILITY_PHONE}`;
+    Linking.openURL(url).catch(() => {
+      Linking.openURL(`https://wa.me/${FACILITY_PHONE}?text=${WHATSAPP_MSG}`);
+    });
+  };
 
-// Memoized contact card component
-const ContactCard = React.memo(({ item, onPress }) => (
-  <TouchableOpacity
-    style={styles.contactCard}
-    onPress={() => item.action && onPress(item.action, item.value)}
-    disabled={!item.action}
-    activeOpacity={item.action ? 0.7 : 1}
-  >
-    <View style={[styles.iconBox, { backgroundColor: item.color + '15' }]}>
-      <MaterialIcons name={item.icon} size={24} color={item.color} />
-    </View>
-    <View style={styles.contactContent}>
-      <Text style={styles.contactTitle}>{item.title}</Text>
-      <Text style={styles.contactValue}>{item.value}</Text>
-    </View>
-    {item.action && (
-      <MaterialIcons name="chevron-right" size={24} color="#d1d5db" />
-    )}
-  </TouchableOpacity>
-));
+  const handleEmail = () => {
+    Linking.openURL(`mailto:${FACILITY_EMAIL}`);
+  };
 
-// Memoized social card component
-const SocialCard = React.memo(({ social, onPress }) => (
-  <TouchableOpacity
-    style={[styles.socialCard, { borderColor: social.color }]}
-    onPress={() => onPress(social.url)}
-    activeOpacity={0.7}
-  >
-    <Text style={styles.socialIcon}>{social.emoji}</Text>
-    <Text style={styles.socialName}>{social.name}</Text>
-  </TouchableOpacity>
-));
+  const handleMaps = () => {
+    const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
+    const latLng = `${LATITUDE},${LONGITUDE}`;
+    
+    const url = Platform.select({
+      ios: `${scheme}${LABEL}@${latLng}`,
+      android: `${scheme}${latLng}(${LABEL})`
+    });
 
-// Memoized FAQ item component
-const FAQItem = React.memo(({ item }) => (
-  <View style={styles.faqItem}>
-    <MaterialIcons name="help" size={20} color="#8b5cf6" />
-    <View style={styles.faqContent}>
-      <Text style={styles.faqQuestion}>{item.question}</Text>
-      <Text style={styles.faqAnswer}>{item.answer}</Text>
-    </View>
-  </View>
-));
-
-// Memoized hero section
-const HeroSection = React.memo(() => (
-  <View style={styles.heroSection}>
-    <MaterialIcons name="help-outline" size={48} color="#8b5cf6" />
-    <Text style={styles.heroTitle}>Get in Touch</Text>
-    <Text style={styles.heroSubtitle}>
-      We're here to help and answer any question you might have
-    </Text>
-  </View>
-));
-
-const ContactPage = ({ navigation }) => {
-  const handleContactAction = useCallback(async (action, value) => {
-    switch (action) {
-      case 'phone':
-        Linking.openURL(`tel:${value}`);
-        break;
-      case 'email':
-        Linking.openURL(`mailto:${value}`);
-        break;
-      case 'copy':
-        await Clipboard.setStringAsync(value);
-        Alert.alert('Copied', `${value} copied to clipboard`);
-        break;
-      case 'location':
-        Linking.openURL('https://maps.google.com/?q=Hyderabad+Sports+Complex');
-        break;
-      default:
-        break;
-    }
-  }, []);
-
-  const openLink = useCallback(async (url) => {
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Error', 'Could not open link');
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Could not open link');
-    }
-  }, []);
-
-  const handleGoBack = useCallback(() => {
-    navigation.goBack();
-  }, [navigation]);
-
-  // Memoized specific contact handlers
-  const handleCallUs = useCallback(() => {
-    handleContactAction('phone', '+91 98765 43210');
-  }, [handleContactAction]);
-
-  const handleEmailUs = useCallback(() => {
-    handleContactAction('email', 'support@courtbook.com');
-  }, [handleContactAction]);
+    Linking.openURL(url);
+  };
 
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.header}>
         <TouchableOpacity
-          onPress={handleGoBack}
+          onPress={() => navigation.goBack()}
           style={styles.backButton}
-          activeOpacity={0.7}
         >
           <MaterialIcons name="arrow-back" size={28} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Contact Us</Text>
-        <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle}>Contact Support</Text>
+        <View style={{ width: 40 }} />
       </LinearGradient>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        removeClippedSubviews={false}
-      >
-        <HeroSection />
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Contact Information</Text>
-          {contactInfo.map((item) => (
-            <ContactCard
-              key={item.id}
-              item={item}
-              onPress={handleContactAction}
-            />
-          ))}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Contact</Text>
-          <View style={styles.buttonGrid}>
-            <TouchableOpacity
-              style={styles.quickButton}
-              onPress={handleCallUs}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="phone-in-talk" size={28} color="#fff" />
-              <Text style={styles.quickButtonText}>Call Us</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickButton}
-              onPress={handleEmailUs}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="mail-outline" size={28} color="#fff" />
-              <Text style={styles.quickButtonText}>Email Us</Text>
-            </TouchableOpacity>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        
+        {/* HERO SECTION */}
+        <View style={styles.heroCard}>
+          <View style={styles.heroIconBox}>
+             <MaterialIcons name="support-agent" size={48} color="#8b5cf6" />
           </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Follow Us</Text>
-          <View style={styles.socialGrid}>
-            {socialLinks.map((social) => (
-              <SocialCard
-                key={social.id}
-                social={social}
-                onPress={openLink}
-              />
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>
-          {faqData.map((item) => (
-            <FAQItem key={item.id} item={item} />
-          ))}
-        </View>
-
-        <View style={styles.messageSection}>
-          <MaterialIcons name="mail-outline" size={32} color="#8b5cf6" />
-          <Text style={styles.messageTitle}>Send Us a Message</Text>
-          <Text style={styles.messageText}>
-            Can't find what you're looking for? Send us a message and our team
-            will get back to you within 24 hours.
+          <Text style={styles.heroTitle}>Here to Help!</Text>
+          <Text style={styles.heroSubtitle}>
+            Have questions about bookings, memberships, or tournaments? Reach out to us directly.
           </Text>
-          <TouchableOpacity
-            style={styles.messageButton}
-            onPress={handleEmailUs}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={['#8b5cf6', '#ec4899']}
-              style={styles.messageButtonGradient}
-            >
-              <Text style={styles.messageButtonText}>Send Message</Text>
-              <MaterialIcons name="send" size={20} color="#fff" />
-            </LinearGradient>
-          </TouchableOpacity>
         </View>
+
+        {/* QUICK ACTIONS */}
+        <Text style={styles.sectionTitle}>Get in Touch</Text>
+        
+        <View style={styles.actionGrid}>
+            <TouchableOpacity style={styles.actionCard} onPress={handleCall} activeOpacity={0.7}>
+            <View style={[styles.iconBox, { backgroundColor: '#dcfce7' }]}>
+                <MaterialIcons name="phone" size={24} color="#16a34a" />
+            </View>
+            <View style={styles.actionContent}>
+                <Text style={styles.actionTitle}>Call Us</Text>
+                <Text style={styles.actionSub}>{FACILITY_PHONE}</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={24} color="#d1d5db" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={handleWhatsApp} activeOpacity={0.7}>
+            <View style={[styles.iconBox, { backgroundColor: '#dbeafe' }]}>
+                <FontAwesome name="whatsapp" size={24} color="#2563eb" />
+            </View>
+            <View style={styles.actionContent}>
+                <Text style={styles.actionTitle}>WhatsApp</Text>
+                <Text style={styles.actionSub}>Chat with Admin</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={24} color="#d1d5db" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={handleEmail} activeOpacity={0.7}>
+            <View style={[styles.iconBox, { backgroundColor: '#fae8ff' }]}>
+                <MaterialIcons name="email" size={24} color="#d946ef" />
+            </View>
+            <View style={styles.actionContent}>
+                <Text style={styles.actionTitle}>Email Support</Text>
+                <Text style={styles.actionSub}>{FACILITY_EMAIL}</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={24} color="#d1d5db" />
+            </TouchableOpacity>
+        </View>
+
+        {/* LOCATION WITH MAP PREVIEW */}
+        <Text style={styles.sectionTitle}>Visit Us</Text>
+        <TouchableOpacity style={styles.locationCard} onPress={handleMaps} activeOpacity={0.9}>
+          <ImageBackground 
+            source={{ uri: '../../assets/Top.jpeg' }} 
+            style={styles.mapPreview}
+            imageStyle={{ opacity: 0.8 }}
+          >
+             <View style={styles.mapOverlay} />
+             <View style={styles.mapPinCircle}>
+                <MaterialIcons name="location-on" size={28} color="#ef4444" />
+             </View>
+          </ImageBackground>
+          
+          <View style={styles.locationContent}>
+            <Text style={styles.locationTitle}>Badminton Arena</Text>
+            <Text style={styles.locationAddress}>{FACILITY_ADDRESS}</Text>
+            <View style={styles.locationAction}>
+                <Text style={styles.locationTap}>Tap to view on Google Maps</Text>
+                <MaterialIcons name="open-in-new" size={16} color="#8b5cf6" />
+            </View>
+          </View>
+        </TouchableOpacity>
+
       </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -326,200 +164,82 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  headerSpacer: {
-    width: 40,
-  },
-  scrollContent: {
-    paddingBottom: 30,
-  },
-  heroSection: {
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 30,
-  },
-  heroTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginTop: 12,
-  },
-  heroSubtitle: {
-    fontSize: 14,
-    color: '#9ca3af',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  section: {
-    paddingHorizontal: 20,
-    marginBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 12,
-  },
-  contactCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  content: { padding: 20, paddingBottom: 50 },
+  
+  heroCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 10,
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  iconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  contactContent: {
-    flex: 1,
-  },
-  contactTitle: {
-    fontSize: 13,
-    color: '#9ca3af',
-    fontWeight: '500',
-  },
-  contactValue: {
-    fontSize: 15,
-    color: '#1f2937',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  buttonGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  quickButton: {
-    flex: 1,
-    backgroundColor: '#8b5cf6',
-    borderRadius: 12,
-    paddingVertical: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 5,
-  },
-  quickButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  socialGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  socialCard: {
-    width: (width - 52) / 2,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingVertical: 20,
-    alignItems: 'center',
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
     elevation: 2,
   },
-  socialIcon: {
-    fontSize: 28,
-    marginBottom: 8,
+  heroIconBox: {
+      width: 80, height: 80, borderRadius: 40, backgroundColor: '#f3e8ff',
+      justifyContent: 'center', alignItems: 'center', marginBottom: 16
   },
-  socialName: {
-    fontSize: 13,
-    color: '#1f2937',
-    fontWeight: '600',
-  },
-  faqItem: {
+  heroTitle: { fontSize: 22, fontWeight: '800', color: '#1f2937', marginBottom: 8 },
+  heroSubtitle: { fontSize: 14, color: '#6b7280', textAlign: 'center', lineHeight: 22, paddingHorizontal: 10 },
+
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#1f2937', marginBottom: 12, marginLeft: 4 },
+  
+  actionGrid: { marginBottom: 24 },
+  actionCard: {
     flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    gap: 12,
-  },
-  faqContent: {
-    flex: 1,
-  },
-  faqQuestion: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  faqAnswer: {
-    fontSize: 12,
-    color: '#9ca3af',
-  },
-  messageSection: {
-    marginHorizontal: 20,
-    backgroundColor: '#fff',
+    padding: 16,
     borderRadius: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-    alignItems: 'center',
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: '#f3f4f6'
   },
-  messageTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginTop: 12,
-  },
-  messageText: {
-    fontSize: 13,
-    color: '#9ca3af',
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  messageButton: {
-    width: '100%',
-    borderRadius: 12,
+  iconBox: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  actionContent: { flex: 1 },
+  actionTitle: { fontSize: 16, fontWeight: '700', color: '#1f2937' },
+  actionSub: { fontSize: 13, color: '#6b7280', marginTop: 2, fontWeight: '500' },
+
+  locationCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
     overflow: 'hidden',
-    shadowColor: '#8b5cf6',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+    marginBottom: 30,
+    borderWidth: 1,
+    borderColor: '#f3f4f6'
   },
-  messageButtonGradient: {
-    flexDirection: 'row',
+  mapPreview: {
+    height: 160,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 14,
-    gap: 8,
+    backgroundColor: '#e5e7eb',
   },
-  messageButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 'bold',
+  mapOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.05)' },
+  mapPinCircle: {
+      width: 56, height: 56, borderRadius: 28,
+      backgroundColor: 'white',
+      justifyContent: 'center', alignItems: 'center',
+      shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, elevation: 5
   },
+  locationContent: { padding: 20 },
+  locationTitle: { fontSize: 18, fontWeight: '700', color: '#1f2937' },
+  locationAddress: { fontSize: 14, color: '#6b7280', marginTop: 4, marginBottom: 16, lineHeight: 20 },
+  locationAction: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  locationTap: { fontSize: 14, color: '#8b5cf6', fontWeight: '600' },
 });
 
-export default ContactPage;
+export default ContactScreen;

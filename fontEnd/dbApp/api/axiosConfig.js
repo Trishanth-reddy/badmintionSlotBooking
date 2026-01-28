@@ -9,7 +9,7 @@ import * as RootNavigation from '../src/navigation/RootNavigation';
 // const API_BASE_URL = 'http://192.168.0.10:5000/api';
 
 // ✅ USE THE PUBLIC TUNNEL LINK (Add /api at the end)
-const API_BASE_URL = 'https://afd8f395b65d.ngrok-free.app/api';
+const API_BASE_URL = 'https://d9fb403e82d9.ngrok-free.app/api';
 
 console.log(`[Config] Connecting to: ${API_BASE_URL}`);
 

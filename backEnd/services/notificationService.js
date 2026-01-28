@@ -6,7 +6,7 @@ const User = require('../models/User');
 const sendPushNotification = async (pushToken, title, body, data = {}) => {
   if (!pushToken) return;
   
-  console.log(`🚀 [DEBUG] Sending to: ${pushToken}`); 
+  // console.log(`🚀 [DEBUG] Sending to: ${pushToken}`); 
   
   const message = {
     to: pushToken,
@@ -30,8 +30,11 @@ const sendPushNotification = async (pushToken, title, body, data = {}) => {
       body: JSON.stringify(message),
     });
 
+    // Only log if there is an error to keep console clean
     const result = await response.json();
-    console.log('🔔 Expo Receipt:', result.data?.status || result);
+    if (result.data?.status === 'error') {
+        console.error('❌ Expo Error:', result.data.message);
+    }
   } catch (error) {
     console.error(`❌ Error sending push notification: ${error}`);
   }
@@ -42,23 +45,28 @@ const sendPushNotification = async (pushToken, title, body, data = {}) => {
 // ===============================================
 
 /**
- * Notifies all Admins when a new booking is created
+ * Notifies all Admins when a new booking is created (Optimized: Parallel)
  */
 const notifyAdminNewBooking = async (booking) => {
   if (!booking) return;
   try {
     const admins = await User.find({ role: 'admin' });
-    for (const admin of admins) {
-      const token = admin.membership?.expoPushToken;
-      if (token) {
-        await sendPushNotification(
-          token,
-          'New Booking Request 🏸',
-          `Booking ${booking.bookingId} is pending approval.`,
-          { screen: 'AdminBookings', bookingId: booking._id }
-        );
-      }
-    }
+    
+    // Send to all admins simultaneously using Promise.all
+    const notifications = admins.map(admin => {
+        const token = admin.membership?.expoPushToken;
+        if (token) {
+            return sendPushNotification(
+                token,
+                'New Booking Request 🏸',
+                `Booking ${booking.bookingId} is pending approval.`,
+                { screen: 'AdminBookings', bookingId: booking._id }
+            );
+        }
+    });
+
+    await Promise.all(notifications);
+
   } catch (error) {
     console.error('Error notifying admins:', error);
   }
@@ -119,31 +127,40 @@ const notifyBookingApproved = async (booking) => {
     const title = 'Booking Approved! ✅';
     const body = `Match on ${new Date(booking.date).toLocaleDateString()} is officially confirmed.`;
 
+    const promises = [];
+
     // 1. Notify the Creator (Captain/Player)
     if (player?.membership?.expoPushToken) {
-      await sendPushNotification(player.membership.expoPushToken, title, body, { 
-        screen: 'BookingDetails', 
-        bookingId: booking._id 
-      });
+      promises.push(
+          sendPushNotification(player.membership.expoPushToken, title, body, { 
+            screen: 'BookingDetails', 
+            bookingId: booking._id 
+          })
+      );
     }
 
-    // 2. Notify All Admins (Log confirmation)
-    for (const admin of admins) {
+    // 2. Notify All Admins (Parallel)
+    admins.forEach(admin => {
       if (admin.membership?.expoPushToken) {
-        await sendPushNotification(
-          admin.membership.expoPushToken, 
-          'Admin: Booking Paid', 
-          `Booking ${booking.bookingId} status updated to Paid.`
+        promises.push(
+            sendPushNotification(
+                admin.membership.expoPushToken, 
+                'Admin: Booking Paid', 
+                `Booking ${booking.bookingId} status updated to Paid.`
+            )
         );
       }
-    }
+    });
+
+    await Promise.all(promises);
+
   } catch (error) {
     console.error('Error in multi-party booking notification:', error);
   }
 };
 
 /**
- * Standard status update notification (Used for cancellations/general changes)
+ * Standard status update notification
  */
 const notifyUserBookingStatus = async (booking, status) => {
   if (!booking || !booking.user) return;
@@ -174,16 +191,25 @@ const notifyMembershipExpiry = async (user, daysLeft) => {
   const token = user?.membership?.expoPushToken;
   if (!token) return;
 
-  let title = 'Membership Expiring Soon! ⏳';
-  let body = `Hi ${user.fullName}, your membership expires in ${daysLeft} days. Renew now!`;
-  
-  if (daysLeft === 1) {
-    body = `Hi ${user.fullName}, your membership expires tomorrow!`;
-  } else if (daysLeft === 0) {
+  let title = 'Membership Reminder 🏸';
+  let body = `Hi ${user.fullName}, your membership expires in ${daysLeft} days.`;
+
+  // Custom messages based on urgency
+  if (daysLeft === 5) {
+    title = 'Membership Expiring Soon ⏳';
+    body = `Hi ${user.fullName}, just a heads up! You have 5 days left on your membership.`;
+  } else if (daysLeft === 3) {
+    title = 'Action Required: 3 Days Left ⚠️';
+    body = `Hi ${user.fullName}, don't lose access! Your membership expires in 3 days.`;
+  } else if (daysLeft === 1) {
+    title = 'Final Warning: Expires Tomorrow! ⏰';
+    body = `Hi ${user.fullName}, this is your last day to renew before expiry!`;
+  } else if (daysLeft <= 0) {
     title = 'Membership Expired ❌';
-    body = `Hi ${user.fullName}, your membership has expired. Renew to join matches.`;
+    body = `Hi ${user.fullName}, your membership has expired. Renew now to book courts.`;
   }
 
+  // Send the notification
   await sendPushNotification(token, title, body, { screen: 'Membership' });
 };
 

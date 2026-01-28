@@ -5,13 +5,14 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import api from '../../../api/axiosConfig';
+import api from '../../../api/axiosConfig'; 
 import { useDebounce } from 'use-debounce';
 import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
-// Helper function to compute days left (extracted and pure)
+// --- HELPER FUNCTIONS ---
+
 const computeDaysLeft = (membership) => {
   if (!membership) return 0;
   if (membership.expiryDate) {
@@ -23,42 +24,60 @@ const computeDaysLeft = (membership) => {
   return membership.daysLeft || 0;
 };
 
-// Memoized Stats Component
+const getInactiveDays = (membership) => {
+  if (!membership?.expiryDate) return 0;
+  const now = new Date();
+  const end = new Date(membership.expiryDate);
+  const diffTime = now - end; 
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays : 0;
+};
+
+const isLongTermInactive = (membership) => {
+    if (membership?.status === 'Active') return false;
+    if (!membership?.expiryDate) return true; 
+    return getInactiveDays(membership) > 55;
+};
+
+// --- MEMOIZED COMPONENTS ---
+
+const NotificationBadge = React.memo(({ label, sent }) => (
+  <View style={[styles.notifBadge, sent ? styles.notifSent : styles.notifPending]}>
+    <View style={styles.notifHeader}>
+       <MaterialIcons name={sent ? "check-circle" : "schedule"} size={14} color={sent ? "#166534" : "#94a3b8"} />
+       <Text style={[styles.notifLabel, sent ? styles.notifLabelSent : styles.notifLabelPending]}>{label}</Text>
+    </View>
+    <Text style={styles.notifStatus}>{sent ? "Sent" : "Pending"}</Text>
+  </View>
+));
+
 const StatsSection = React.memo(({ stats }) => (
   <View style={styles.statsContainer}>
     <View style={styles.statBox}>
-      <Text style={styles.statValue}>{stats.total}</Text>
-      <Text style={styles.statLabel}>Total Users</Text>
+      <Text style={styles.statValue}>{stats.total || 0}</Text>
+      <Text style={styles.statLabel}>Total</Text>
     </View>
-    <View style={styles.statBox}>
-      <Text style={styles.statValue}>{stats.active}</Text>
+    <View style={[styles.statBox, { borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#f1f5f9' }]}>
+      <Text style={[styles.statValue, { color: '#16a34a' }]}>{stats.active || 0}</Text>
       <Text style={styles.statLabel}>Active</Text>
     </View>
     <View style={styles.statBox}>
-      <Text style={styles.statValue}>{stats.inactive}</Text>
+      <Text style={[styles.statValue, { color: '#ef4444' }]}>{stats.inactive || 0}</Text>
       <Text style={styles.statLabel}>Inactive</Text>
     </View>
   </View>
 ));
 
-// Memoized Filter Tabs Component
 const FilterTabs = React.memo(({ filterType, onFilterChange }) => (
   <View style={styles.filterContainer}>
     {['all', 'active', 'inactive'].map((filter) => (
       <TouchableOpacity
         key={filter}
-        style={[
-          styles.filterTab,
-          filterType === filter && styles.filterTabActive,
-        ]}
+        style={[styles.filterTab, filterType === filter && styles.filterTabActive]}
         onPress={() => onFilterChange(filter)}
+        activeOpacity={0.7}
       >
-        <Text
-          style={[
-            styles.filterText,
-            filterType === filter && styles.filterTextActive,
-          ]}
-        >
+        <Text style={[styles.filterText, filterType === filter && styles.filterTextActive]}>
           {filter.charAt(0).toUpperCase() + filter.slice(1)}
         </Text>
       </TouchableOpacity>
@@ -66,64 +85,68 @@ const FilterTabs = React.memo(({ filterType, onFilterChange }) => (
   </View>
 ));
 
-// Memoized User Card Component
 const UserCard = React.memo(({ item, onPress }) => {
-  const daysLeft = useMemo(() => computeDaysLeft(item.membership), [item.membership]);
+  const daysLeft = computeDaysLeft(item.membership);
+  const isActive = item.membership?.status === 'Active';
+  const inactiveDays = !isActive ? getInactiveDays(item.membership) : 0;
   
-  const handlePress = useCallback(() => {
-    onPress(item);
-  }, [item, onPress]);
-
   return (
-    <TouchableOpacity style={styles.userCard} onPress={handlePress} activeOpacity={0.7}>
+    <TouchableOpacity style={styles.userCard} onPress={() => onPress(item)} activeOpacity={0.7}>
       <View style={styles.userCardLeft}>
         {item.profilePicture ? (
           <Image source={{ uri: item.profilePicture }} style={styles.avatarImage} />
         ) : (
-          <View style={styles.avatarBox}>
-            <Text style={styles.avatar}>{item.fullName.charAt(0)}</Text>
+          <View style={[styles.avatarBox, !isActive && { backgroundColor: '#cbd5e1' }]}>
+            <Text style={styles.avatar}>{item.fullName?.charAt(0).toUpperCase() || 'U'}</Text>
           </View>
         )}
       </View>
 
       <View style={styles.userCardMiddle}>
-        <Text style={styles.userName} numberOfLines={1}>{item.fullName}</Text>
+        <View style={styles.nameRow}>
+            <Text style={[styles.userName, !isActive && { color: '#64748b' }]} numberOfLines={1}>
+                {item.fullName}
+            </Text>
+            {isActive && <View style={styles.activeDot} />}
+        </View>
         <Text style={styles.userEmail} numberOfLines={1}>{item.email}</Text>
-        <View style={styles.badgeContainer}>
-          <View
-            style={[
-              styles.badge,
-              item.membership?.status === 'Active' ? styles.badgeActive : styles.badgeInactive,
-            ]}
-          >
-            <Text style={styles.badgeText}>{item.membership?.status || 'No Sub'}</Text>
-          </View>
-          <Text style={styles.daysLeftText}>{daysLeft} days left</Text>
+        
+        <View style={styles.metaRow}>
+            {isActive ? (
+                <Text style={styles.daysLeftText}>{daysLeft} days remaining</Text>
+            ) : (
+                <Text style={styles.inactiveText}>
+                    {inactiveDays > 0 ? `Expired ${inactiveDays}d ago` : 'Membership Inactive'}
+                </Text>
+            )}
         </View>
       </View>
 
       <View style={styles.userCardRight}>
-        <MaterialIcons name="chevron-right" size={24} color="#d1d5db" />
+        <MaterialIcons name="chevron-right" size={24} color="#e2e8f0" />
       </View>
     </TouchableOpacity>
   );
 });
 
-// Memoized Quick Add Button Component
-const QuickAddButton = React.memo(({ days, amount, onPress, disabled }) => (
+const QuickAddButton = React.memo(({ days, label, onPress, disabled, colorStart, colorEnd }) => (
   <TouchableOpacity
     style={styles.quickButton}
-    onPress={() => onPress(days, amount)}
+    onPress={() => onPress(days)}
     disabled={disabled}
     activeOpacity={0.8}
   >
-    <LinearGradient colors={['#8b5cf6', '#ec4899']} style={styles.quickButtonGradient}>
-      <Text style={styles.quickButtonText}>{days} Day{days > 1 ? 's' : ''}{'\n'}₹{amount}</Text>
+    <LinearGradient 
+        colors={[colorStart || '#8b5cf6', colorEnd || '#ec4899']} 
+        style={styles.quickButtonGradient}
+    >
+      <Text style={styles.quickButtonText}>{label}</Text>
     </LinearGradient>
   </TouchableOpacity>
 ));
 
-// Main Component
+// --- MAIN SCREEN ---
+
 const UserManagementScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -133,105 +156,69 @@ const UserManagementScreen = ({ navigation }) => {
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0 });
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [nowTick, setNowTick] = useState(Date.now());
-
+  
   const [debouncedSearch] = useDebounce(searchQuery, 500);
 
-  // Load users from API
   const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await api.get('/users/admin/all', {
+      const response = await api.get('/admin/users', {
         params: { search: debouncedSearch, status: filterType },
       });
-      setUsers(response.data.data);
-      setStats(response.data.stats);
+      
+      const fetchedUsers = response.data.data || [];
+      setUsers(fetchedUsers);
+      
+      const total = fetchedUsers.length;
+      const active = fetchedUsers.filter(u => u.membership?.status === 'Active').length;
+      setStats({ total, active, inactive: total - active });
+      
     } catch (error) {
       console.error('Error loading users:', error);
-      Alert.alert('Error', 'Failed to load users');
     } finally {
       setLoading(false);
     }
   }, [debouncedSearch, filterType]);
 
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
+  useFocusEffect(useCallback(() => { loadUsers(); }, [loadUsers]));
 
-  useFocusEffect(
-    useCallback(() => {
-      loadUsers();
-    }, [loadUsers])
-  );
+  const handleCloseModal = useCallback(() => { setShowModal(false); setSelectedUser(null); }, []);
 
-  // Auto-refresh every minute for days-left accuracy
-  useEffect(() => {
-    const interval = setInterval(() => setNowTick(Date.now()), 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleGoBack = useCallback(() => {
-    navigation.goBack();
-  }, [navigation]);
-
-  const handleCloseModal = useCallback(() => {
-    setShowModal(false);
-    setSelectedUser(null);
-  }, []);
-
-  const handleFilterChange = useCallback((filter) => {
-    setFilterType(filter);
-  }, []);
-
-  const handleViewDetails = useCallback((item) => {
-    setSelectedUser(item);
-    setShowModal(true);
-  }, []);
-
-  const handleAddMembership = useCallback(
-    async (days, amount) => {
+  const handleExtendMembership = useCallback(async (days) => {
       if (!selectedUser) return;
       try {
         setActionLoading(true);
-        await api.post('/subscriptions/admin/subscription/add', {
-          userId: selectedUser._id,
-          days,
-          amount,
-          notes: `${days}-day plan added by admin`,
-        });
-        Alert.alert('Success', `${days}-day membership added`);
-        await loadUsers();
+        await api.put(`/admin/users/${selectedUser._id}/extend`, { days });
+        Alert.alert('Updated', `Successfully added ${days} days.`);
+        await loadUsers(); // Refresh list
         handleCloseModal();
       } catch (error) {
-        Alert.alert('Error', error.response?.data?.message || 'Failed to add plan');
+        Alert.alert('Error', error.response?.data?.message || 'Failed to extend');
       } finally {
         setActionLoading(false);
       }
-    },
-    [selectedUser, loadUsers, handleCloseModal]
-  );
+    }, [selectedUser, loadUsers, handleCloseModal]);
 
-  const handleCancelMembership = useCallback(async () => {
+  const handleDeleteUser = useCallback(async () => {
     if (!selectedUser) return;
+    const isOld = isLongTermInactive(selectedUser.membership);
     Alert.alert(
-      'Cancel Membership',
-      `Cancel membership for ${selectedUser.fullName}?`,
+      'Delete Account',
+      `Are you sure you want to permanently delete ${selectedUser.fullName}? This cannot be undone.`,
       [
-        { text: 'No', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Yes',
+          text: 'Delete Permanently',
           style: 'destructive',
           onPress: async () => {
             try {
               setActionLoading(true);
-              await api.delete(`/subscriptions/admin/subscription/${selectedUser._id}`, {
-                data: { reason: 'Cancelled by Admin' },
-              });
-              Alert.alert('Success', 'Membership cancelled');
+              await api.delete(`/admin/users/${selectedUser._id}`);
+              Alert.alert('Deleted', 'User has been removed.');
               await loadUsers();
               handleCloseModal();
             } catch (error) {
-              Alert.alert('Error', 'Failed to cancel membership');
+              Alert.alert('Error', 'Failed to delete user');
             } finally {
               setActionLoading(false);
             }
@@ -241,31 +228,17 @@ const UserManagementScreen = ({ navigation }) => {
     );
   }, [selectedUser, loadUsers, handleCloseModal]);
 
-  // Memoized render function
-  const renderUserCard = useCallback(
-    ({ item }) => <UserCard item={item} onPress={handleViewDetails} />,
-    [handleViewDetails]
-  );
-
-  const keyExtractor = useCallback((item) => item._id, []);
-
-  const selectedUserDaysLeft = useMemo(
-    () => (selectedUser ? computeDaysLeft(selectedUser.membership) : 0),
-    [selectedUser]
-  );
-
-  if (loading && !users.length) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" color="#8b5cf6" />
-      </View>
-    );
-  }
+  const renderUserCard = useCallback(({ item }) => (
+    <UserCard item={item} onPress={(user) => { setSelectedUser(user); setShowModal(true); }} />
+  ), []);
+  
+  const modalDaysLeft = useMemo(() => (selectedUser ? computeDaysLeft(selectedUser.membership) : 0), [selectedUser]);
+  const modalInactiveDays = useMemo(() => (selectedUser ? getInactiveDays(selectedUser.membership) : 0), [selectedUser]);
 
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.header}>
-        <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <MaterialIcons name="arrow-back" size={28} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>User Management</Text>
@@ -274,130 +247,144 @@ const UserManagementScreen = ({ navigation }) => {
 
       <StatsSection stats={stats} />
 
-      <View style={styles.searchContainer}>
-        <MaterialIcons name="search" size={24} color="#8b5cf6" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search users..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholderTextColor="#9ca3af"
-        />
+      <View style={styles.searchWrapper}>
+        <View style={styles.searchContainer}>
+            <MaterialIcons name="search" size={22} color="#94a3b8" />
+            <TextInput
+            style={styles.searchInput}
+            placeholder="Search users..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#94a3b8"
+            returnKeyType="search"
+            />
+        </View>
+        <FilterTabs filterType={filterType} onFilterChange={setFilterType} />
       </View>
-
-      <FilterTabs filterType={filterType} onFilterChange={handleFilterChange} />
 
       <FlatList
         data={users}
-        keyExtractor={keyExtractor}
+        keyExtractor={(item) => item._id}
         renderItem={renderUserCard}
         onRefresh={loadUsers}
         refreshing={loading}
         contentContainerStyle={styles.listContent}
-        extraData={nowTick}
-        initialNumToRender={10}
-        maxToRenderPerBatch={10}
+        initialNumToRender={8}
         windowSize={5}
         removeClippedSubviews={true}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <MaterialIcons name="person-off" size={48} color="#d1d5db" />
-            <Text style={styles.emptyText}>No users found</Text>
-          </View>
-        }
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={!loading && (
+            <View style={styles.emptyState}>
+                <MaterialIcons name="search-off" size={48} color="#cbd5e1" />
+                <Text style={styles.emptyText}>No users found</Text>
+            </View>
+        )}
       />
 
-      {/* User Detail Modal */}
-      <Modal visible={showModal} transparent animationType="slide">
+      {/* USER DETAIL MODAL */}
+      <Modal visible={showModal} transparent animationType="fade" onRequestClose={handleCloseModal}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             {selectedUser && (
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <>
+                <View style={styles.modalDragHandle} />
                 <View style={styles.modalHeader}>
-                  <TouchableOpacity onPress={handleCloseModal}>
-                    <MaterialIcons name="close" size={28} color="#1f2937" />
-                  </TouchableOpacity>
                   <Text style={styles.modalTitle}>User Details</Text>
-                  <View style={{ width: 40 }} />
+                  <TouchableOpacity onPress={handleCloseModal} style={styles.closeBtn}>
+                    <MaterialIcons name="close" size={22} color="#475569" />
+                  </TouchableOpacity>
                 </View>
 
-                <View style={styles.infoCard}>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Name</Text>
-                    <Text style={styles.infoValue}>{selectedUser.fullName}</Text>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                  
+                  {/* Profile Header */}
+                  <View style={styles.modalProfileHeader}>
+                      <View style={styles.modalAvatar}>
+                         <Text style={styles.modalAvatarText}>{selectedUser.fullName?.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View>
+                         <Text style={styles.modalName}>{selectedUser.fullName}</Text>
+                         <Text style={styles.modalEmail}>{selectedUser.email}</Text>
+                         <Text style={styles.modalPhone}>{selectedUser.phone || 'No phone linked'}</Text>
+                      </View>
                   </View>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Email</Text>
-                    <Text style={styles.infoValue} numberOfLines={1}>{selectedUser.email}</Text>
-                  </View>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Phone</Text>
-                    <Text style={styles.infoValue}>{selectedUser.phone}</Text>
-                  </View>
-                </View>
 
-                <View style={styles.membershipCard}>
-                  <Text style={styles.cardTitle}>Membership</Text>
-                  <View style={styles.membershipRow}>
-                    <Text style={styles.membershipLabel}>Status</Text>
-                    <View
-                      style={[
-                        styles.membershipBadge,
-                        selectedUser.membership?.status === 'Active'
-                          ? styles.badgeActiveModal
-                          : styles.badgeInactiveModal,
-                      ]}
-                    >
-                      <Text style={styles.membershipBadgeText}>
-                        {selectedUser.membership?.status || 'None'}
-                      </Text>
+                  <View style={styles.divider} />
+
+                  {/* Membership Card */}
+                  <View style={styles.sectionBlock}>
+                    <View style={styles.sectionRow}>
+                        <Text style={styles.sectionLabel}>Membership Status</Text>
+                        <View style={[styles.statusPill, selectedUser.membership?.status === 'Active' ? styles.pillActive : styles.pillInactive]}>
+                            <Text style={[styles.pillText, selectedUser.membership?.status === 'Active' ? styles.pillTextActive : styles.pillTextInactive]}>
+                                {selectedUser.membership?.status || 'Inactive'}
+                            </Text>
+                        </View>
+                    </View>
+                    
+                    <Text style={styles.timelineText}>
+                        {selectedUser.membership?.status === 'Active' 
+                          ? `${modalDaysLeft} Days Remaining` 
+                          : `Expired ${modalInactiveDays} days ago`}
+                    </Text>
+
+                    {/* Auto-Notification Status */}
+                    <Text style={styles.subHeader}>Reminder Logs</Text>
+                    <View style={styles.notifContainer}>
+                      <NotificationBadge 
+                        label="5 Days" 
+                        sent={
+                          selectedUser.membership?.lastWarningDay === 5 || 
+                          selectedUser.membership?.lastWarningDay === 3 || 
+                          selectedUser.membership?.lastWarningDay === 1 || 
+                          selectedUser.membership?.lastWarningDay === 0
+                        } 
+                      />
+                      <NotificationBadge 
+                        label="3 Days" 
+                        sent={
+                          selectedUser.membership?.lastWarningDay === 3 || 
+                          selectedUser.membership?.lastWarningDay === 1 || 
+                          selectedUser.membership?.lastWarningDay === 0
+                        } 
+                      />
+                      <NotificationBadge 
+                        label="1 Day" 
+                        sent={
+                          selectedUser.membership?.lastWarningDay === 1 || 
+                          selectedUser.membership?.lastWarningDay === 0
+                        } 
+                      />
                     </View>
                   </View>
-                  <View style={styles.membershipDivider} />
-                  <View style={styles.membershipRow}>
-                    <Text style={styles.membershipLabel}>Days Left</Text>
-                    <Text
-                      style={[
-                        styles.membershipValue,
-                        selectedUserDaysLeft <= 5 && styles.daysLeftWarning,
-                      ]}
-                    >
-                      {selectedUserDaysLeft} days
-                    </Text>
-                  </View>
-                </View>
 
-                <View style={styles.actionContainer}>
-                  <Text style={styles.quickAddTitle}>Quick Add Membership</Text>
-                  <View style={styles.quickButtonsContainer}>
-                    <QuickAddButton days={1} amount={100} onPress={handleAddMembership} disabled={actionLoading} />
-                    <QuickAddButton days={30} amount={999} onPress={handleAddMembership} disabled={actionLoading} />
-                    <QuickAddButton days={90} amount={2499} onPress={handleAddMembership} disabled={actionLoading} />
+                  <View style={styles.divider} />
+
+                  {/* Actions */}
+                  <View style={styles.sectionBlock}>
+                    <Text style={styles.sectionLabel}>Extend Membership</Text>
+                    <View style={styles.quickButtonsContainer}>
+                      <QuickAddButton days={1} label="+1 Day" colorStart="#3b82f6" colorEnd="#2563eb" onPress={handleExtendMembership} disabled={actionLoading} />
+                      <QuickAddButton days={30} label="+1 Month" colorStart="#8b5cf6" colorEnd="#7c3aed" onPress={handleExtendMembership} disabled={actionLoading} />
+                      <QuickAddButton days={365} label="+1 Year" colorStart="#10b981" colorEnd="#059669" onPress={handleExtendMembership} disabled={actionLoading} />
+                    </View>
                   </View>
 
-                  {selectedUser.membership?.status === 'Active' && (
-                    <TouchableOpacity
-                      style={styles.cancelButton}
-                      onPress={handleCancelMembership}
-                      disabled={actionLoading}
-                      activeOpacity={0.8}
-                    >
-                      <LinearGradient colors={['#dc2626', '#b91c1c']} style={styles.cancelButtonGradient}>
-                        {actionLoading ? (
-                          <ActivityIndicator color="#fff" />
-                        ) : (
-                          <>
-                            <MaterialIcons name="block" size={20} color="#fff" />
-                            <Text style={styles.cancelButtonText}>Cancel Membership</Text>
-                          </>
-                        )}
-                      </LinearGradient>
+                  {/* Danger Zone */}
+                  <View style={styles.dangerZone}>
+                    {isLongTermInactive(selectedUser.membership) && (
+                        <View style={styles.warningBox}>
+                            <MaterialIcons name="warning" size={16} color="#b91c1c" />
+                            <Text style={styles.warningText}>Inactive {">"} 55 days. Safe to delete.</Text>
+                        </View>
+                    )}
+                    <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteUser} disabled={actionLoading} activeOpacity={0.8}>
+                      {actionLoading ? <ActivityIndicator color="#ef4444" /> : <Text style={styles.deleteButtonText}>Delete User Account</Text>}
                     </TouchableOpacity>
-                  )}
-                </View>
-              </ScrollView>
+                  </View>
+
+                </ScrollView>
+              </>
             )}
           </View>
         </View>
@@ -408,184 +395,95 @@ const UserManagementScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8f9fa' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20 },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255, 255, 255, 0.2)', justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  statsContainer: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 15, gap: 10 },
-  statBox: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  statValue: { fontSize: 20, fontWeight: 'bold', color: '#8b5cf6' },
-  statLabel: { fontSize: 11, color: '#9ca3af', marginTop: 4 },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    paddingHorizontal: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  searchInput: { flex: 1, paddingVertical: 12, marginLeft: 8, fontSize: 15, color: '#333' },
-  filterContainer: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 12, gap: 8 },
-  filterTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  filterTabActive: { backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' },
-  filterText: { fontSize: 13, color: '#6b7280', fontWeight: '500' },
+  
+  statsContainer: { flexDirection: 'row', backgroundColor: '#fff', margin: 20, borderRadius: 16, paddingVertical: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
+  statBox: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  statValue: { fontSize: 18, fontWeight: 'bold', color: '#1e293b' },
+  statLabel: { fontSize: 12, color: '#64748b', marginTop: 4, fontWeight: '500' },
+
+  searchWrapper: { paddingHorizontal: 20, gap: 12, marginBottom: 10 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, borderWidth: 1, borderColor: '#e2e8f0', height: 48 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 15, color: '#1e293b' },
+  
+  filterContainer: { flexDirection: 'row', gap: 8 },
+  filterTab: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20, backgroundColor: '#f1f5f9' },
+  filterTabActive: { backgroundColor: '#1e293b' },
+  filterText: { fontSize: 13, color: '#64748b', fontWeight: '600' },
   filterTextActive: { color: '#fff' },
-  listContent: { paddingHorizontal: 20, paddingBottom: 20, gap: 10 },
-  userCard: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 14,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
+
+  listContent: { paddingHorizontal: 20, paddingBottom: 40, gap: 12 },
+  
+  userCard: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 16, padding: 12, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.03, elevation: 2, borderWidth: 1, borderColor: '#f8fafc' },
   userCardLeft: { marginRight: 12 },
-  avatarBox: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#8b5cf6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarImage: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#e5e7eb' },
-  avatar: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  avatarBox: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#8b5cf6', justifyContent: 'center', alignItems: 'center' },
+  avatarImage: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#e2e8f0' },
+  avatar: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
+  
   userCardMiddle: { flex: 1 },
-  userName: { fontSize: 15, fontWeight: 'bold', color: '#1f2937', marginBottom: 2 },
-  userEmail: { fontSize: 12, color: '#9ca3af', marginBottom: 6 },
-  badgeContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  badgeActive: { backgroundColor: '#dcfce7' },
-  badgeInactive: { backgroundColor: '#fee2e2' },
-  badgeText: { fontSize: 11, fontWeight: '600', color: '#1f2937' },
-  daysLeftText: { fontSize: 11, color: '#8b5cf6', fontWeight: '500' },
-  userCardRight: { marginLeft: 12 },
-  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
-  emptyText: { fontSize: 16, color: '#9ca3af', marginTop: 12 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
-  modalContent: {
-    backgroundColor: '#f8f9fa',
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
-    paddingBottom: 30,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1f2937' },
-  infoCard: {
-    backgroundColor: '#fff',
-    marginHorizontal: 20,
-    marginTop: 20,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  divider: { height: 1, backgroundColor: '#e5e7eb' },
-  infoLabel: { fontSize: 13, color: '#9ca3af', fontWeight: '500' },
-  infoValue: { fontSize: 14, color: '#1f2937', fontWeight: '600', flex: 1, textAlign: 'right' },
-  membershipCard: {
-    backgroundColor: '#f3e8ff',
-    marginHorizontal: 20,
-    marginTop: 16,
-    borderRadius: 12,
-    padding: 16,
-  },
-  cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#1f2937', marginBottom: 12 },
-  membershipRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  membershipDivider: { height: 1, backgroundColor: '#e9d5ff' },
-  membershipLabel: { fontSize: 13, color: '#6b21a8', fontWeight: '500' },
-  membershipValue: { fontSize: 14, color: '#1f2937', fontWeight: '600' },
-  membershipBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  badgeActiveModal: { backgroundColor: '#dcfce7' },
-  badgeInactiveModal: { backgroundColor: '#fee2e2' },
-  membershipBadgeText: { fontSize: 12, fontWeight: '600', color: '#1f2937' },
-  daysLeftWarning: { color: '#dc2626' },
-  actionContainer: { marginHorizontal: 20, marginTop: 20 },
-  quickAddTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  quickButtonsContainer: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  quickButton: { flex: 1, borderRadius: 10, overflow: 'hidden', height: 70 },
-  quickButtonGradient: { justifyContent: 'center', alignItems: 'center', paddingVertical: 8, flex: 1 },
-  quickButtonText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  cancelButton: { borderRadius: 12, overflow: 'hidden', marginTop: 10 },
-  cancelButtonGradient: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 14,
-    gap: 8,
-  },
-  cancelButtonText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#16a34a' },
+  userName: { fontSize: 16, fontWeight: 'bold', color: '#1e293b' },
+  userEmail: { fontSize: 13, color: '#94a3b8' },
+  metaRow: { marginTop: 6 },
+  daysLeftText: { fontSize: 12, color: '#16a34a', fontWeight: '600' },
+  inactiveText: { fontSize: 12, color: '#ef4444', fontWeight: '600' },
+  
+  userCardRight: { marginLeft: 8 },
+  
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  emptyText: { fontSize: 15, color: '#94a3b8', marginTop: 12 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingBottom: 40, maxHeight: '85%' },
+  modalDragHandle: { width: 40, height: 4, backgroundColor: '#cbd5e1', borderRadius: 2, alignSelf: 'center', marginTop: 12 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 20, paddingBottom: 10 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b' },
+  closeBtn: { padding: 4, backgroundColor: '#f1f5f9', borderRadius: 20 },
+
+  modalProfileHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
+  modalAvatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center' },
+  modalAvatarText: { fontSize: 24, fontWeight: 'bold', color: '#475569' },
+  modalName: { fontSize: 20, fontWeight: 'bold', color: '#1e293b' },
+  modalEmail: { fontSize: 14, color: '#64748b' },
+  modalPhone: { fontSize: 13, color: '#94a3b8', marginTop: 2 },
+
+  divider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 16 },
+  
+  sectionBlock: { gap: 12 },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionLabel: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
+  statusPill: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
+  pillActive: { backgroundColor: '#dcfce7' },
+  pillInactive: { backgroundColor: '#fee2e2' },
+  pillText: { fontSize: 12, fontWeight: '700' },
+  pillTextActive: { color: '#166534' },
+  pillTextInactive: { color: '#991b1b' },
+  timelineText: { fontSize: 13, color: '#64748b', marginBottom: 8 },
+  
+  subHeader: { fontSize: 12, fontWeight: '600', color: '#94a3b8', marginTop: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  
+  notifContainer: { flexDirection: 'row', gap: 8 },
+  notifBadge: { flex: 1, borderRadius: 10, padding: 10, alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0' },
+  notifSent: { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
+  notifHeader: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  notifLabel: { fontSize: 11, fontWeight: '700' },
+  notifLabelSent: { color: '#166534' },
+  notifLabelPending: { color: '#64748b' },
+  notifStatus: { fontSize: 10, color: '#94a3b8' },
+
+  quickButtonsContainer: { flexDirection: 'row', gap: 10 },
+  quickButton: { flex: 1, borderRadius: 12, overflow: 'hidden', height: 48 },
+  quickButtonGradient: { justifyContent: 'center', alignItems: 'center', flex: 1 },
+  quickButtonText: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
+
+  dangerZone: { marginTop: 30, paddingTop: 20, borderTopWidth: 1, borderTopColor: '#fecaca', alignItems: 'center' },
+  warningBox: { flexDirection: 'row', gap: 6, backgroundColor: '#fef2f2', padding: 8, borderRadius: 8, marginBottom: 12 },
+  warningText: { color: '#b91c1c', fontSize: 12, fontWeight: '600' },
+  deleteButton: { width: '100%', alignItems: 'center', paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#ef4444', backgroundColor: '#fff' },
+  deleteButtonText: { color: '#ef4444', fontSize: 14, fontWeight: 'bold' },
 });
 
 export default UserManagementScreen;

@@ -1,35 +1,37 @@
 const nodemailer = require('nodemailer');
-require('dotenv').config(); // Ensure this is at the top!
 
-// Use 'service: gmail' just like the test file that worked
+// Create the transporter using Brevo settings from .env
 const transporter = nodemailer.createTransport({
-  service: 'gmail', 
+  host: process.env.EMAIL_HOST,
+  port: process.env.EMAIL_PORT, // Should be 587 or 2525
+  secure: false, // true for 465, false for other ports
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS, // This reads from .env
+    user: process.env.EMAIL_USER, // Your Brevo login (a08...)
+    pass: process.env.EMAIL_PASS, // Your long API Key
   },
 });
 
-const sendEmailOtp = async (email, otp) => {
-  const mailOptions = {
-    from: `"Badminton App" <${process.env.EMAIL_FROM}>`,
-    to: email,
-    subject: 'Your Login Verification Code',
-    html: `
-      <div style="font-family: Arial, sans-serif; padding: 20px;">
-        <h2>Welcome Back!</h2>
-        <p>Your verification code is:</p>
-        <h1>${otp}</h1>
-      </div>
-    `,
-  };
-
+const sendEmailOtp = async (to, otp) => {
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Email sent: ${info.messageId}`);
+    const info = await transporter.sendMail({
+      // ✅ This matches your verified sender settings exactly
+      from: '"badminton" <strishanthreddy@gmail.com>', 
+      to: to,
+      subject: 'Badminton App Verification',
+      text: `Your verification code is: ${otp}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+          <h2>Verification Code</h2>
+          <p>Your code is: <b style="font-size: 24px; color: #333;">${otp}</b></p>
+          <p>This code will expire in 10 minutes.</p>
+        </div>
+      `,
+    });
+
+    console.log("✅ Email sent: %s", info.messageId);
     return true;
   } catch (error) {
-    console.error('❌ Email Error:', error);
+    console.error("❌ Email Error:", error);
     return false;
   }
 };

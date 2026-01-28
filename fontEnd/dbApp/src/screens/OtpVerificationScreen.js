@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  Image
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -20,8 +21,6 @@ import api from '../../api/axiosConfig';
 const OtpVerificationScreen = ({ route, navigation }) => {
   const authContext = useContext(AuthContext);
   
-  // ✅ FIX 1: Extract the FULL payload passed from RegisterScreen
-  // We need password and fullName to complete the registration.
   const { payload } = route.params; 
   const { email, fullName, password } = payload; 
 
@@ -32,7 +31,6 @@ const OtpVerificationScreen = ({ route, navigation }) => {
 
   const inputs = useRef([]);
 
-  // Countdown Timer
   useEffect(() => {
     if (countdown === 0) return;
     const timer = setInterval(() => {
@@ -41,7 +39,6 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     return () => clearInterval(timer);
   }, [countdown]);
 
-  // Handle OTP Input
   const handleOtpChange = (text, index) => {
     if (text.length > 1 && text.length === 6) {
       const newOtp = text.split('');
@@ -61,7 +58,6 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     }
   };
 
-  // Handle Verification (The Main Fix)
   const handleVerify = async () => {
     const enteredOtp = otp.join('');
     if (enteredOtp.length !== 6) {
@@ -72,18 +68,15 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     setLoading(true);
 
     try {
-      // ✅ FIX 2: Call '/register' with ALL user data
-      // This matches your backend: router.post('/register', register);
       const response = await api.post('/auth/register', {
         fullName,
         email,
         password,
-        otp: enteredOtp, // The code the user just typed
+        otp: enteredOtp,
       });
 
       setLoading(false);
 
-      // Save token and user data
       if (response.data.token && response.data.user) {
         await AsyncStorage.setItem('userToken', response.data.token);
         await AsyncStorage.setItem('userData', JSON.stringify(response.data.user));
@@ -103,14 +96,11 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     }
   };
 
-  // Handle Resend OTP
   const handleResend = async () => {
     setResendLoading(true);
     setCountdown(60);
 
     try {
-      // ✅ FIX 3: Use the correct route '/send-register-otp'
-      // Your backend doesn't have '/resend-otp', it reuses the send endpoint.
       await api.post('/auth/send-register-otp', {
         email,
       });
@@ -127,48 +117,40 @@ const OtpVerificationScreen = ({ route, navigation }) => {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
-    >
-      <LinearGradient
-        colors={['#6366f1', '#8b5cf6', '#ec4899']}
-        style={styles.gradient}
+    <View style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardView}
       >
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
-            <MaterialIcons name="arrow-back" size={28} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Verify Your Email</Text>
-          <View style={{ width: 28 }} />
-        </View>
-
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          <View style={styles.welcomeContainer}>
-            <View style={styles.iconBg}>
-              <MaterialIcons name="phonelink-lock" size={60} color="#fff" />
-            </View>
-            <Text style={styles.welcomeTitle}>Enter OTP</Text>
-            <Text style={styles.welcomeSubtitle}>
-              A 6-digit code was sent to:
-            </Text>
-            <Text style={styles.phoneText}>{email}</Text>
+          
+          {/* --- 1. LOGO SECTION --- */}
+          <View style={styles.logoContainer}>
+            <Image 
+              source={require('../../assets/logo.jpeg')} 
+              style={styles.logo} 
+              resizeMode="contain" 
+            />
           </View>
 
-          <View style={styles.formCard}>
+          {/* --- 2. HEADER TEXT --- */}
+          <View style={styles.headerContainer}>
+            <Text style={styles.title}>Verify Your Email</Text>
+            <Text style={styles.subtitle}>Enter the code sent to {email}</Text>
+          </View>
+
+          {/* --- 3. INPUT FORM --- */}
+          <View style={styles.formContainer}>
             <View style={styles.otpContainer}>
               {otp.map((digit, index) => (
                 <TextInput
                   key={index}
                   style={styles.otpInput}
                   keyboardType="number-pad"
-                  maxLength={1} // Changed to 1 to prevent double paste issues, logic handles paste separately
+                  maxLength={1}
                   onChangeText={(text) => handleOtpChange(text, index)}
                   value={digit}
                   ref={(ref) => (inputs.current[index] = ref)}
@@ -179,33 +161,33 @@ const OtpVerificationScreen = ({ route, navigation }) => {
             </View>
 
             <TouchableOpacity
-              style={[styles.verifyButton, loading && styles.verifyButtonDisabled]}
+              style={styles.verifyButton}
               onPress={handleVerify}
               disabled={loading}
               activeOpacity={0.8}
             >
               <LinearGradient
-                colors={['#8b5cf6', '#ec4899']}
+                colors={['#6366f1', '#8b5cf6']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.verifyButtonGradient}
               >
                 {loading ? (
-                  <>
-                    <ActivityIndicator color="#fff" />
-                    <Text style={styles.verifyButtonText}>Creating Account...</Text>
-                  </>
+                  <View style={styles.btnContent}>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.verifyButtonText}>Verifying...</Text>
+                  </View>
                 ) : (
-                  <>
-                    <Text style={styles.verifyButtonText}>Verify & Create Account</Text>
+                  <View style={styles.btnContent}>
+                    <Text style={styles.verifyButtonText}>VERIFY</Text>
                     <MaterialIcons name="arrow-forward" size={20} color="#fff" />
-                  </>
+                  </View>
                 )}
               </LinearGradient>
             </TouchableOpacity>
 
             <View style={styles.resendContainer}>
-              <Text style={styles.resendText}>Didn't receive the code? </Text>
+              <Text style={styles.resendText}>Didn't receive code? </Text>
               {countdown > 0 ? (
                 <Text style={styles.countdownText}>
                   Resend in {countdown}s
@@ -220,137 +202,122 @@ const OtpVerificationScreen = ({ route, navigation }) => {
             </View>
           </View>
         </ScrollView>
-      </LinearGradient>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  gradient: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff', // Full White Background
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  keyboardView: {
+    flex: 1,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  scrollContent: { paddingBottom: 30 },
-  welcomeContainer: {
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 30,
-    alignItems: 'center',
-    marginBottom: 30,
+    paddingTop: 40,
+    paddingBottom: 40,
   },
-  iconBg: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
+  
+  // Logo Styles
+  logoContainer: {
     alignItems: 'center',
     marginBottom: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    marginTop: 10,
   },
-  welcomeTitle: {
-    fontSize: 32,
+  logo: {
+    width: 100,
+    height: 100, 
+  },
+
+  // Header Styles
+  headerContainer: {
+    marginBottom: 30,
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#1f2937',
     marginBottom: 8,
   },
-  welcomeSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
+  subtitle: {
+    fontSize: 15,
+    color: '#6b7280',
     textAlign: 'center',
-    lineHeight: 24,
   },
-  phoneText: {
-    fontSize: 18,
-    color: '#fff',
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  formCard: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    paddingHorizontal: 25,
-    paddingTop: 35,
-    paddingBottom: 40,
-    minHeight: 400,
+
+  // Form Styles
+  formContainer: {
+    marginBottom: 20,
   },
   otpContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 30,
-    paddingHorizontal: 10,
   },
   otpInput: {
-    width: 48,
-    height: 56,
+    width: 45,
+    height: 55,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#e5e7eb',
     borderRadius: 12,
     textAlign: 'center',
     fontSize: 22,
     fontWeight: '600',
-    color: '#333',
-    backgroundColor: '#f5f5f5',
+    color: '#1f2937',
+    backgroundColor: '#f3f4f6',
   },
+
+  // Button Styles
   verifyButton: {
-    borderRadius: 15,
+    borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 24,
-    shadowColor: '#8b5cf6',
+    elevation: 3,
+    shadowColor: '#6366f1',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 8,
   },
-  verifyButtonDisabled: { opacity: 0.7 },
   verifyButtonGradient: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+    paddingVertical: 16,
     alignItems: 'center',
-    paddingVertical: 18,
+    justifyContent: 'center',
+  },
+  btnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
   },
   verifyButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    marginRight: 8,
+    letterSpacing: 1,
   },
+
+  // Resend Styles
   resendContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
   },
   resendText: {
-    fontSize: 15,
-    color: '#666',
+    fontSize: 14,
+    color: '#6b7280',
   },
   countdownText: {
-    fontSize: 15,
-    color: '#666',
+    fontSize: 14,
+    color: '#6b7280',
     fontWeight: '600',
   },
   resendLink: {
-    fontSize: 15,
-    color: '#8b5cf6',
+    fontSize: 14,
+    color: '#6366f1',
     fontWeight: 'bold',
   },
 });

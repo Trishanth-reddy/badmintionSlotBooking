@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
+// Protect Middleware (Validate Token)
 const protect = async (req, res, next) => {
   let token;
   // IMPORT INSIDE to break require cycles
@@ -29,6 +30,7 @@ const protect = async (req, res, next) => {
   }
 };
 
+// Generic Role Authorization (Keep this if you use it elsewhere)
 const authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
@@ -38,4 +40,14 @@ const authorize = (...roles) => {
   };
 };
 
-module.exports = { protect, authorize };
+// Admin Middleware (SPECIFICALLY FOR ADMIN ROUTES)
+const admin = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    next();
+  } else {
+    res.status(403).json({ message: 'Not authorized as an admin' });
+  }
+};
+
+// EXPORT ALL THREE
+module.exports = { protect, authorize, admin };
